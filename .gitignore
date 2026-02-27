@@ -181,3 +181,5 @@ cython_debug/
 .cursorindexingignore
 /dotnetcore
 .DS_Store
+/data
+config/data.sqlite

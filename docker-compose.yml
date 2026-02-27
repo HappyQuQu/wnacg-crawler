@@ -1,0 +1,9 @@
+services:
+  wnacg:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data        # 📁 漫画图片 / ZIP 包
+      - ./config:/config    # ⚙️  config.json + data.sqlite
+    restart: unless-stopped
