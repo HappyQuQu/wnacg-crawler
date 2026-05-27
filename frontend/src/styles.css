@@ -26,6 +26,11 @@
   --blue: #007aff;
   --blue-soft: rgba(0, 122, 255, 0.1);
   --shadow: 0 16px 40px rgba(0, 0, 0, 0.07);
+  --glass-bg: rgba(255, 255, 255, 0.58);
+  --glass-bg-strong: rgba(255, 255, 255, 0.74);
+  --glass-tint: rgba(255, 255, 255, 0.28);
+  --glass-line: rgba(255, 255, 255, 0.62);
+  --glass-shadow: 0 18px 42px rgba(31, 35, 41, 0.12);
   --radius: 10px;
 }
 
@@ -43,7 +48,8 @@ body {
   min-height: 100vh;
   color: var(--text);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(245, 245, 247, 0.96) 320px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(245, 245, 247, 0.96) 330px),
+    linear-gradient(125deg, rgba(0, 122, 255, 0.1) 0%, rgba(255, 255, 255, 0) 34%, rgba(52, 199, 89, 0.055) 68%, rgba(255, 149, 0, 0.07) 100%),
     var(--bg);
   font-size: 14px;
   letter-spacing: 0;
@@ -102,8 +108,10 @@ textarea:focus-visible,
   min-width: 0;
   padding: 18px 14px;
   border-right: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.82);
-  backdrop-filter: blur(22px) saturate(160%);
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: blur(34px) saturate(180%);
+  backdrop-filter: blur(34px) saturate(180%);
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.5);
   display: flex;
   flex-direction: column;
   gap: 18px;
@@ -125,8 +133,13 @@ textarea:focus-visible,
   display: grid;
   place-items: center;
   color: #ffffff;
-  background: var(--primary);
-  box-shadow: 0 10px 24px rgba(0, 122, 255, 0.2);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.36), rgba(255, 255, 255, 0)),
+    rgba(0, 122, 255, 0.76);
+  border: 1px solid rgba(255, 255, 255, 0.52);
+  -webkit-backdrop-filter: blur(18px) saturate(180%);
+  backdrop-filter: blur(18px) saturate(180%);
+  box-shadow: 0 12px 30px rgba(0, 122, 255, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.46);
 }
 
 .brand strong,
@@ -197,12 +210,15 @@ textarea:focus-visible,
 }
 
 .nav-item:hover {
-  background: rgba(118, 118, 128, 0.1);
+  background: rgba(255, 255, 255, 0.48);
 }
 
 .nav-item.active {
   color: var(--primary-ink);
-  background: var(--primary-soft);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.44), rgba(255, 255, 255, 0.08)),
+    rgba(0, 122, 255, 0.14);
+  border: 1px solid var(--glass-line);
   box-shadow: inset 3px 0 0 var(--primary);
 }
 
@@ -225,7 +241,6 @@ textarea:focus-visible,
 }
 
 .extension-card,
-.panel,
 .metric,
 .library-card,
 .settings-section {
@@ -235,11 +250,22 @@ textarea:focus-visible,
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.03);
 }
 
+.panel {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.03);
+}
+
 .extension-card {
   margin-top: auto;
   padding: 12px;
   display: grid;
   gap: 12px;
+  background: var(--glass-bg-strong);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  backdrop-filter: blur(28px) saturate(180%);
+  box-shadow: var(--glass-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 
 .connection-row,
@@ -297,8 +323,10 @@ textarea:focus-visible,
   justify-content: space-between;
   gap: 18px;
   border-bottom: 1px solid var(--line);
-  background: rgba(245, 245, 247, 0.8);
-  backdrop-filter: blur(22px) saturate(150%);
+  background: rgba(245, 245, 247, 0.56);
+  -webkit-backdrop-filter: blur(34px) saturate(180%);
+  backdrop-filter: blur(34px) saturate(180%);
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.55);
 }
 
 .toolbar-title {
@@ -343,8 +371,11 @@ textarea:focus-visible,
   padding: 0 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: var(--surface);
+  background: var(--glass-bg-strong);
   color: var(--subtle);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.58);
 }
 
 .search input {
@@ -364,37 +395,49 @@ textarea:focus-visible,
   justify-content: center;
   gap: 8px;
   color: var(--text);
-  background: #ffffff;
-  border: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.2)),
+    rgba(255, 255, 255, 0.58);
+  border: 1px solid var(--glass-line);
   font-weight: 800;
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  backdrop-filter: blur(22px) saturate(180%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.68), 0 8px 18px rgba(31, 35, 41, 0.06);
   transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease, box-shadow 180ms ease;
 }
 
 .button:hover:not(:disabled) {
   border-color: var(--line-strong);
-  background: rgba(118, 118, 128, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(255, 255, 255, 0.28)),
+    rgba(255, 255, 255, 0.66);
 }
 
 .button.primary {
   color: #ffffff;
-  border-color: var(--primary);
-  background: var(--primary);
-  box-shadow: 0 10px 24px rgba(0, 122, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.38);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0.03)),
+    rgba(0, 122, 255, 0.82);
+  box-shadow: 0 14px 30px rgba(0, 122, 255, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.42);
 }
 
 .button.primary:hover:not(:disabled) {
-  background: #006edb;
-  border-color: #006edb;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.36), rgba(255, 255, 255, 0.05)),
+    rgba(0, 122, 255, 0.9);
+  border-color: rgba(255, 255, 255, 0.46);
 }
 
 .button.secondary {
   color: #1d1d1f;
-  background: #ffffff;
+  background: var(--glass-bg-strong);
 }
 
 .button.ghost {
   color: var(--muted);
   background: transparent;
+  box-shadow: none;
 }
 
 .button.danger-button {
@@ -424,6 +467,9 @@ textarea:focus-visible,
   grid-template-columns: 44px 1fr;
   align-items: start;
   gap: 13px;
+  background: rgba(255, 255, 255, 0.86);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  backdrop-filter: blur(16px) saturate(140%);
 }
 
 .metric-icon {
@@ -432,6 +478,7 @@ textarea:focus-visible,
   border-radius: var(--radius);
   display: grid;
   place-items: center;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62);
 }
 
 .metric.indigo .metric-icon {
@@ -496,7 +543,9 @@ textarea:focus-visible,
   justify-content: space-between;
   gap: 14px;
   border-bottom: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.68);
+  -webkit-backdrop-filter: blur(22px) saturate(170%);
+  backdrop-filter: blur(22px) saturate(170%);
 }
 
 .panel-header.compact {
@@ -515,7 +564,9 @@ textarea:focus-visible,
   grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
   border-bottom: 1px solid var(--line);
-  background: rgba(250, 250, 252, 0.82);
+  background: rgba(250, 250, 252, 0.66);
+  -webkit-backdrop-filter: blur(18px) saturate(170%);
+  backdrop-filter: blur(18px) saturate(170%);
 }
 
 .workflow-step {
@@ -537,7 +588,10 @@ textarea:focus-visible,
   display: grid;
   place-items: center;
   color: var(--primary-ink);
-  background: var(--primary-soft);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.08)),
+    var(--primary-soft);
+  border: 1px solid var(--glass-line);
 }
 
 .workflow-step strong {
@@ -569,7 +623,7 @@ textarea,
   border: 1px solid var(--line);
   border-radius: var(--radius);
   color: var(--text);
-  background: #ffffff;
+  background: rgba(255, 255, 255, 0.78);
   outline: 0;
   transition: border-color 180ms ease, box-shadow 180ms ease;
 }
@@ -593,7 +647,9 @@ textarea:focus,
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
   border-top: 1px solid var(--line);
-  background: rgba(250, 250, 252, 0.82);
+  background: rgba(250, 250, 252, 0.66);
+  -webkit-backdrop-filter: blur(18px) saturate(170%);
+  backdrop-filter: blur(18px) saturate(170%);
 }
 
 .table-wrap {
@@ -617,7 +673,7 @@ td {
 
 th {
   color: var(--subtle);
-  background: rgba(250, 250, 252, 0.84);
+  background: rgba(250, 250, 252, 0.78);
   font-size: 12px;
   font-weight: 800;
 }
@@ -639,7 +695,12 @@ tbody tr:hover {
   justify-content: center;
   gap: 6px;
   color: var(--primary-ink);
-  background: var(--primary-soft);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.46), rgba(255, 255, 255, 0.08)),
+    var(--primary-soft);
+  border: 1px solid var(--glass-line);
+  -webkit-backdrop-filter: blur(18px) saturate(170%);
+  backdrop-filter: blur(18px) saturate(170%);
   font-size: 12px;
   font-weight: 850;
   white-space: nowrap;
@@ -679,8 +740,12 @@ tbody tr:hover {
   display: grid;
   place-items: center;
   color: var(--primary);
-  background: linear-gradient(180deg, #ffffff, #f5f5f7);
-  border: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(245, 245, 247, 0.56)),
+    rgba(255, 255, 255, 0.48);
+  border: 1px solid var(--glass-line);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  backdrop-filter: blur(18px) saturate(160%);
 }
 
 .detail-body h3 {
@@ -712,7 +777,7 @@ tbody tr:hover {
   padding: 10px;
   display: grid;
   gap: 5px;
-  background: var(--surface-soft);
+  background: rgba(251, 251, 253, 0.78);
 }
 
 .info span {
@@ -798,7 +863,9 @@ tbody tr:hover {
   flex-wrap: wrap;
   gap: 8px;
   border-bottom: 1px solid var(--line);
-  background: rgba(250, 250, 252, 0.82);
+  background: rgba(250, 250, 252, 0.66);
+  -webkit-backdrop-filter: blur(18px) saturate(170%);
+  backdrop-filter: blur(18px) saturate(170%);
 }
 
 .segment {
@@ -809,7 +876,12 @@ tbody tr:hover {
   align-items: center;
   gap: 8px;
   color: var(--muted);
-  background: rgba(118, 118, 128, 0.12);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.58), rgba(255, 255, 255, 0.12)),
+    rgba(118, 118, 128, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.52);
+  -webkit-backdrop-filter: blur(18px) saturate(170%);
+  backdrop-filter: blur(18px) saturate(170%);
   font-weight: 800;
   transition: color 180ms ease, background-color 180ms ease;
 }
@@ -883,12 +955,17 @@ tbody tr:hover {
 .icon-button {
   width: 34px;
   height: 34px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--glass-line);
   border-radius: var(--radius);
   display: inline-grid;
   place-items: center;
   color: #3a3a3c;
-  background: #ffffff;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.62), rgba(255, 255, 255, 0.16)),
+    rgba(255, 255, 255, 0.58);
+  -webkit-backdrop-filter: blur(18px) saturate(170%);
+  backdrop-filter: blur(18px) saturate(170%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.64);
   transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease;
 }
 
@@ -923,7 +1000,7 @@ tbody tr:hover {
 .library-card.selected {
   border-color: rgba(0, 122, 255, 0.28);
   background: #ffffff;
-  box-shadow: var(--shadow);
+  box-shadow: var(--glass-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.52);
 }
 
 .library-cover {
@@ -933,8 +1010,12 @@ tbody tr:hover {
   display: grid;
   place-items: center;
   color: var(--primary);
-  background: linear-gradient(180deg, #ffffff, #f5f5f7);
-  border: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(245, 245, 247, 0.56)),
+    rgba(255, 255, 255, 0.48);
+  border: 1px solid var(--glass-line);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  backdrop-filter: blur(18px) saturate(160%);
 }
 
 .library-card-body {
@@ -1004,10 +1085,12 @@ tbody tr:hover {
   align-items: center;
   gap: 8px;
   padding: 0 12px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--glass-line);
   border-radius: var(--radius);
   color: var(--text);
-  background: #ffffff;
+  background: var(--glass-bg-strong);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  backdrop-filter: blur(22px) saturate(180%);
   font-weight: 800;
 }
 
@@ -1030,7 +1113,7 @@ tbody tr:hover {
   align-items: center;
   gap: 9px;
   color: var(--muted);
-  background: var(--surface-soft);
+  background: rgba(251, 251, 253, 0.78);
 }
 
 .path-row span {
@@ -1172,7 +1255,7 @@ tbody tr:hover {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 0 11px;
-  background: #ffffff;
+  background: rgba(255, 255, 255, 0.78);
 }
 
 .toggle-field input {
@@ -1205,6 +1288,26 @@ tbody tr:hover {
     scroll-behavior: auto !important;
     transition-duration: 1ms !important;
     animation-duration: 1ms !important;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .sidebar,
+  .toolbar,
+  .search,
+  .button,
+  .extension-card,
+  .metric,
+  .panel-header,
+  .workflow-strip,
+  .summary-strip,
+  .segment,
+  .status,
+  .icon-button,
+  .filter-toggle {
+    background: #ffffff;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
   }
 }
 
