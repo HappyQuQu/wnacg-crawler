@@ -197,3 +197,6 @@ frontend/dist/
 frontend/tsconfig.tsbuildinfo
 extension/dist/
 extension/tsconfig.tsbuildinfo
+
+# OpenCode
+.opencode/
