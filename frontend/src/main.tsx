@@ -1,22 +1,32 @@
 import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
+  Activity,
+  AlertTriangle,
   Archive,
+  ArrowRight,
   BookOpen,
   CheckCircle2,
   ClipboardList,
+  Database,
   Download,
   Eye,
   FileText,
   FolderOpen,
+  Gauge,
+  HardDrive,
+  Inbox,
   LayoutDashboard,
   ListFilter,
+  ListChecks,
+  Network,
   Pause,
   Play,
   Plus,
   RefreshCw,
   RotateCcw,
   Search,
+  Server,
   Settings,
   ShieldCheck,
   Wifi,
@@ -138,6 +148,9 @@ type TaskProgressMessage = {
 
 type WsStatus = "connecting" | "connected" | "fallback";
 type ViewKey = "dashboard" | "queue" | "library" | "logs" | "settings";
+type QueueFilter = "all" | "active" | "failed" | "partial" | "completed";
+type LibraryFilter = "all" | "completed" | "partial" | "failed" | "missing";
+type IconComponent = typeof LayoutDashboard;
 
 type LogItem = {
   id: number;
@@ -176,21 +189,49 @@ type AppConfig = {
 
 const defaultInput = "";
 
-const navItems: { key: ViewKey; label: string; Icon: typeof LayoutDashboard }[] = [
-  { key: "dashboard", label: "控制台", Icon: LayoutDashboard },
-  { key: "queue", label: "下载队列", Icon: ClipboardList },
-  { key: "library", label: "本地资料库", Icon: BookOpen },
-  { key: "logs", label: "日志", Icon: FileText },
-  { key: "settings", label: "设置", Icon: Settings }
+const navSections: { label: string; items: { key: ViewKey; label: string; Icon: IconComponent }[] }[] = [
+  {
+    label: "任务流程",
+    items: [
+      { key: "dashboard", label: "控制台", Icon: LayoutDashboard },
+      { key: "queue", label: "下载队列", Icon: ClipboardList },
+      { key: "library", label: "本地资料库", Icon: BookOpen }
+    ]
+  },
+  {
+    label: "系统",
+    items: [
+      { key: "logs", label: "运行日志", Icon: FileText },
+      { key: "settings", label: "设置", Icon: Settings }
+    ]
+  }
 ];
 
 const viewCopy: Record<ViewKey, { title: string; subtitle: string }> = {
-  dashboard: { title: "控制台", subtitle: "任务收件箱、下载队列和本地资料库" },
-  queue: { title: "下载队列", subtitle: "查看任务进度、暂停、继续、取消和重试" },
-  library: { title: "本地资料库", subtitle: "查看已下载内容、完整度、文件明细和 ZIP 状态" },
-  logs: { title: "日志", subtitle: "查看任务失败、图片失败和修复记录" },
-  settings: { title: "设置", subtitle: "配置下载目录、并发、代理和扩展配对" }
+  dashboard: { title: "控制台", subtitle: "从输入预检到下载归档，一屏完成核心流程" },
+  queue: { title: "下载队列", subtitle: "按状态聚合任务，快速处理暂停、继续、重试和取消" },
+  library: { title: "本地资料库", subtitle: "按完整度管理本地内容，检查文件、补全缺失并打包 ZIP" },
+  logs: { title: "运行日志", subtitle: "定位失败原因、阶段变化和修复记录" },
+  settings: { title: "设置", subtitle: "配置下载目录、并发、代理和浏览器扩展配对" }
 };
+
+const queueFilters: { key: QueueFilter; label: string }[] = [
+  { key: "all", label: "全部" },
+  { key: "active", label: "进行中" },
+  { key: "failed", label: "失败" },
+  { key: "partial", label: "部分完成" },
+  { key: "completed", label: "已完成" }
+];
+
+const libraryFilters: { key: LibraryFilter; label: string }[] = [
+  { key: "all", label: "全部" },
+  { key: "completed", label: "完整" },
+  { key: "partial", label: "缺失" },
+  { key: "failed", label: "失败" },
+  { key: "missing", label: "文件异常" }
+];
+
+const pipelineSteps = ["输入解析", "任务预检", "加入队列", "下载执行", "完整校验", "资料库归档"];
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -215,6 +256,8 @@ function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [libraryItems, setLibraryItems] = useState<LibraryItem[]>([]);
   const [logItems, setLogItems] = useState<LogItem[]>([]);
+  const [taskFilter, setTaskFilter] = useState<QueueFilter>("all");
+  const [libraryFilter, setLibraryFilter] = useState<LibraryFilter>("all");
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [selectedLibraryId, setSelectedLibraryId] = useState<string | null>(null);
   const [selectedLibraryItem, setSelectedLibraryItem] = useState<LibraryItem | null>(null);
@@ -258,6 +301,50 @@ function App() {
   }, [selectedLibraryItem]);
 
   const normalizedSearch = searchQuery.trim().toLowerCase();
+
+  const queueCounts = useMemo(() => {
+    return {
+      all: tasks.length,
+      active: tasks.filter((task) =>
+        ["pending", "queued", "running", "paused"].includes(task.status)
+      ).length,
+      failed: tasks.filter((task) => task.status === "failed").length,
+      partial: tasks.filter((task) => task.status === "partial").length,
+      completed: tasks.filter((task) => task.status === "completed").length
+    };
+  }, [tasks]);
+
+  const libraryCounts = useMemo(() => {
+    return {
+      all: libraryItems.length,
+      completed: libraryItems.filter((item) => item.status === "completed").length,
+      partial: libraryItems.filter((item) => item.status === "partial").length,
+      failed: libraryItems.filter((item) => item.status === "failed").length,
+      missing: libraryItems.filter(
+        (item) => item.status === "missing" || item.missing_files > 0 || item.failed_files > 0
+      ).length
+    };
+  }, [libraryItems]);
+
+  const logCounts = useMemo(() => {
+    return {
+      error: logItems.filter((item) => item.level === "error").length,
+      warning: logItems.filter((item) => item.level === "warning").length,
+      total: logItems.length
+    };
+  }, [logItems]);
+
+  const navCounts = useMemo<Record<ViewKey, string>>(
+    () => ({
+      dashboard: String(metrics.actionable),
+      queue: String(queueCounts.active),
+      library: String(libraryCounts.all),
+      logs: String(logCounts.error || logCounts.warning || logCounts.total),
+      settings: config?.extension_token_set ? "OK" : "SET"
+    }),
+    [config?.extension_token_set, libraryCounts.all, logCounts, metrics.actionable, queueCounts.active]
+  );
+
   const parsedRows = useMemo(() => {
     const rows = parseResult?.items ?? [];
     return normalizedSearch
@@ -270,24 +357,54 @@ function App() {
   }, [normalizedSearch, parseResult]);
 
   const filteredTasks = useMemo(() => {
+    const byFilter = tasks.filter((task) => {
+      if (taskFilter === "active") {
+        return ["pending", "queued", "running", "paused"].includes(task.status);
+      }
+      if (taskFilter === "failed") {
+        return task.status === "failed";
+      }
+      if (taskFilter === "partial") {
+        return task.status === "partial";
+      }
+      if (taskFilter === "completed") {
+        return task.status === "completed";
+      }
+      return true;
+    });
     return normalizedSearch
-      ? tasks.filter((task) =>
+      ? byFilter.filter((task) =>
           [task.manga_id, task.title, task.source, task.status, task.stage, task.task_id]
             .filter(Boolean)
             .some((value) => String(value).toLowerCase().includes(normalizedSearch))
         )
-      : tasks;
-  }, [normalizedSearch, tasks]);
+      : byFilter;
+  }, [normalizedSearch, taskFilter, tasks]);
 
   const filteredLibraryItems = useMemo(() => {
+    const byFilter = libraryItems.filter((item) => {
+      if (libraryFilter === "completed") {
+        return item.status === "completed";
+      }
+      if (libraryFilter === "partial") {
+        return item.status === "partial" || item.missing_files > 0;
+      }
+      if (libraryFilter === "failed") {
+        return item.status === "failed" || item.failed_files > 0;
+      }
+      if (libraryFilter === "missing") {
+        return item.status === "missing" || item.missing_files > 0 || item.failed_files > 0;
+      }
+      return true;
+    });
     return normalizedSearch
-      ? libraryItems.filter((item) =>
+      ? byFilter.filter((item) =>
           [item.manga_id, item.title, item.status, item.manga_status, item.last_error]
             .filter(Boolean)
             .some((value) => String(value).toLowerCase().includes(normalizedSearch))
         )
-      : libraryItems;
-  }, [libraryItems, normalizedSearch]);
+      : byFilter;
+  }, [libraryFilter, libraryItems, normalizedSearch]);
 
   const filteredLogItems = useMemo(() => {
     return normalizedSearch
@@ -626,44 +743,56 @@ function App() {
           </div>
           <div>
             <strong>WNACG Downloader</strong>
-            <span>本地下载中枢</span>
+            <span>本地采集工作台</span>
           </div>
         </div>
 
-        <nav className="nav">
-          {navItems.map(({ key, label, Icon }) => (
-            <button
-              key={key}
-              className={`nav-item ${activeView === key ? "active" : ""}`}
-              onClick={() => setActiveView(key)}
-            >
-              <Icon size={18} />
-              {label}
-            </button>
+        <nav className="nav" aria-label="主导航">
+          {navSections.map((section) => (
+            <div className="nav-group" key={section.label}>
+              <span className="nav-label">{section.label}</span>
+              {section.items.map(({ key, label, Icon }) => (
+                <button
+                  key={key}
+                  className={`nav-item ${activeView === key ? "active" : ""}`}
+                  onClick={() => setActiveView(key)}
+                >
+                  <Icon size={18} />
+                  <span>{label}</span>
+                  <span className="pill-count">{navCounts[key]}</span>
+                </button>
+              ))}
+            </div>
           ))}
         </nav>
 
         <section className="extension-card">
-          <div>
-            <span className="caption">连接状态</span>
-            <strong>{message}</strong>
+          <div className="connection-row">
+            <span className="caption">运行状态</span>
+            <span className={`status ${wsStatus === "connected" ? "success" : "warning"}`}>
+              {wsStatus === "connected" ? <Wifi size={13} /> : <WifiOff size={13} />}
+              {wsStatus === "connected" ? "实时同步" : "轮询中"}
+            </span>
           </div>
-          <span className={`status ${wsStatus === "connected" ? "success" : "warning"}`}>
-            {wsStatus === "connected" ? <Wifi size={13} /> : <WifiOff size={13} />}
-            {wsStatus === "connected" ? "WS" : "轮询"}
-          </span>
+          <strong>{message}</strong>
+          <div className="side-stats">
+            <MiniStat label="队列" value={String(queueCounts.active)} />
+            <MiniStat label="资料库" value={String(libraryCounts.all)} />
+          </div>
         </section>
       </aside>
 
       <main className="main">
         <header className="toolbar">
-          <div>
+          <div className="toolbar-title">
+            <span className="eyebrow">本地任务工作台</span>
             <h1>{viewCopy[activeView].title}</h1>
             <p>{viewCopy[activeView].subtitle}</p>
           </div>
           <div className="toolbar-actions">
             <label className="search">
               <Search size={17} />
+              <span className="sr-only">搜索</span>
               <input
                 placeholder="搜索 ID、标题、状态"
                 value={searchQuery}
@@ -671,7 +800,7 @@ function App() {
               />
             </label>
             <button className="button secondary" onClick={() => setActiveView("settings")}>
-              <ShieldCheck size={17} />扩展
+              <ShieldCheck size={17} />扩展设置
             </button>
             <button
               className="button primary"
@@ -686,271 +815,468 @@ function App() {
 
         <section className="content">
           <div className="metrics">
-            <Metric label="可加入" value={String(metrics.actionable)} detail="来自当前预检结果" />
-            <Metric label="队列中" value={String(metrics.active)} detail="pending / queued / running" />
+            <Metric
+              label="可加入"
+              value={String(metrics.actionable)}
+              detail="当前预检可执行"
+              Icon={Inbox}
+              tone="indigo"
+            />
+            <Metric
+              label="队列中"
+              value={String(metrics.active)}
+              detail="待处理 / 运行 / 暂停"
+              Icon={Activity}
+              tone="blue"
+            />
             <Metric
               label="资料库"
               value={`${metrics.completedLibrary}/${metrics.libraryTotal}`}
               detail="已完成 / 本地条目"
+              Icon={Database}
+              tone="green"
             />
-            <Metric label="失败项" value={String(metrics.failed)} detail="等待重试的任务" />
+            <Metric
+              label="待修复"
+              value={String(metrics.failed)}
+              detail="失败任务等待重试"
+              Icon={AlertTriangle}
+              tone="orange"
+            />
           </div>
 
           {activeView === "dashboard" && (
-          <div className="workspace">
-            <section className="panel">
-              <div className="panel-header">
-                <div>
-                  <h2>添加任务</h2>
-                  <p>直接输入 ID 或详情页链接，预检结果来自后端</p>
-                </div>
-                <button className="button secondary" onClick={refreshAll} disabled={loading}>
-                  <RefreshCw size={16} />刷新
-                </button>
-              </div>
-              <div className="add-area">
-                <textarea value={taskInput} onChange={(event) => setTaskInput(event.target.value)} />
-                <div className="actions">
-                  <button className="button primary" onClick={parseInput} disabled={loading}>
-                    {loading ? "处理中" : "解析"}
-                  </button>
-                  <button className="button secondary" onClick={addParsedTasks} disabled={loading}>
-                    加入队列
+            <div className="dashboard-grid">
+              <section className="panel intake-panel">
+                <div className="panel-header">
+                  <div>
+                    <span className="eyebrow">任务收件箱</span>
+                    <h2>批量添加</h2>
+                    <p>ID、详情页链接和混合文本都会先进入预检</p>
+                  </div>
+                  <button className="button secondary" onClick={refreshAll} disabled={loading}>
+                    <RefreshCw size={16} />刷新数据
                   </button>
                 </div>
-              </div>
-              <div className="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>ID</th>
-                      <th>标题</th>
-                      <th>页数</th>
-                      <th>状态</th>
-                      <th>来源</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {parsedRows.map((row) => (
-                      <tr key={`${row.raw}-${row.manga_id ?? "invalid"}`}>
-                        <td>{row.manga_id ?? "-"}</td>
-                        <td>{row.title || row.raw}</td>
-                        <td>{row.pic_count || row.page_count || "-"}</td>
-                        <td><StatusBadge status={row.status} /></td>
-                        <td>{row.source}</td>
-                      </tr>
-                    ))}
-                    {parsedRows.length === 0 && (
-                      <tr>
-                        <td colSpan={5}>暂无预检结果</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </section>
 
-            <aside className="panel detail">
-              <div className="panel-header">
-                <div>
-                  <h2>任务详情</h2>
-                  <p>{selectedTask ? `当前选中 ${selectedTask.manga_id}` : "暂无持久化任务"}</p>
+                <div className="workflow-strip" aria-label="下载流程">
+                  {pipelineSteps.map((step, index) => (
+                    <div className="workflow-step" key={step}>
+                      <span>{index + 1}</span>
+                      <strong>{step}</strong>
+                      {index < pipelineSteps.length - 1 && <ArrowRight size={14} />}
+                    </div>
+                  ))}
                 </div>
-                {selectedTask && <StatusBadge status={selectedTask.status} />}
-              </div>
-              <div className="detail-body">
-                <div className="cover" />
-                <div>
-                  <h3>{selectedTask?.title || selectedTask?.manga_id || "等待加入任务"}</h3>
-                  <p>
-                    {selectedTask
-                      ? `阶段 ${selectedTask.stage} · 来源 ${selectedTask.source}`
-                      : "点击解析并加入队列后，这里会显示真实任务"}
-                  </p>
+
+                <div className="add-area">
+                  <label className="field-label" htmlFor="task-input">
+                    输入内容
+                  </label>
+                  <textarea
+                    id="task-input"
+                    value={taskInput}
+                    placeholder={"123456\nhttps://www.wnacg.com/photos-index-page-1-aid-298731.html\n298732, 298733"}
+                    onChange={(event) => setTaskInput(event.target.value)}
+                  />
+                  <div className="actions">
+                    <button className="button primary" onClick={parseInput} disabled={loading}>
+                      <ListChecks size={17} />{loading ? "处理中" : "解析预检"}
+                    </button>
+                    <button className="button secondary" onClick={addParsedTasks} disabled={loading}>
+                      <Plus size={17} />加入队列
+                    </button>
+                    <button
+                      className="button ghost"
+                      onClick={() => {
+                        setTaskInput("");
+                        setParseResult(null);
+                      }}
+                      disabled={loading || (!taskInput && !parseResult)}
+                    >
+                      清空
+                    </button>
+                  </div>
                 </div>
-              </div>
-              <div className="detail-grid">
-                <Info label="任务 ID" value={selectedTask?.task_id ?? "-"} />
-                <Info label="进度" value={`${selectedTask?.progress_current ?? 0} / ${selectedTask?.progress_total ?? 0}`} />
-                <Info label="重试" value={String(selectedTask?.retry_count ?? 0)} />
-                <Info label="更新时间" value={formatTime(selectedTask?.updated_at)} />
-              </div>
-              <div className="task-actions">
-                <button
-                  className="button secondary"
-                  disabled={!selectedTask || !canPause(selectedTask) || loading}
-                  onClick={() => controlSelectedTask("pause")}
-                >
-                  <Pause size={17} />暂停
-                </button>
-                <button
-                  className="button secondary"
-                  disabled={!selectedTask || !canResume(selectedTask) || loading}
-                  onClick={() => controlSelectedTask("resume")}
-                >
-                  <Play size={17} />继续
-                </button>
-                <button
-                  className="button secondary danger-button"
-                  disabled={!selectedTask || !canCancel(selectedTask) || loading}
-                  onClick={() => controlSelectedTask("cancel")}
-                >
-                  <XCircle size={17} />取消
-                </button>
-                <button
-                  className="button primary"
-                  disabled={!selectedTask || !canRetry(selectedTask) || loading}
-                  onClick={retrySelectedTask}
-                >
-                  <CheckCircle2 size={17} />重试
-                </button>
-              </div>
-            </aside>
-          </div>
+
+                {parseResult && (
+                  <div className="summary-strip">
+                    <MiniStat label="总输入" value={String(parseResult.summary.total)} />
+                    <MiniStat label="有效" value={String(parseResult.summary.valid)} />
+                    <MiniStat label="重复" value={String(parseResult.summary.duplicate)} />
+                    <MiniStat label="无效" value={String(parseResult.summary.invalid)} />
+                  </div>
+                )}
+
+                <div className="table-wrap">
+                  <table className="precheck-table">
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>标题</th>
+                        <th>图片</th>
+                        <th>状态</th>
+                        <th>来源</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {parsedRows.map((row) => (
+                        <tr key={`${row.raw}-${row.manga_id ?? "invalid"}`}>
+                          <td className="mono">{row.manga_id ?? "-"}</td>
+                          <td>{row.title || row.raw}</td>
+                          <td>{row.pic_count || row.page_count || "-"}</td>
+                          <td><StatusBadge status={row.status} /></td>
+                          <td>{row.source}</td>
+                        </tr>
+                      ))}
+                      {parsedRows.length === 0 && (
+                        <tr>
+                          <td colSpan={5}>暂无预检结果</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+              <aside className="side-stack">
+                <section className="panel detail task-focus">
+                  <div className="panel-header compact">
+                    <div>
+                      <span className="eyebrow">当前任务</span>
+                      <h2>{selectedTask?.manga_id ?? "未选择"}</h2>
+                      <p>{selectedTask ? selectedTask.title || "未写入标题" : "加入队列后会显示任务状态"}</p>
+                    </div>
+                    {selectedTask && <StatusBadge status={selectedTask.status} />}
+                  </div>
+                  <div className="detail-body">
+                    <div className="cover">
+                      <Gauge size={28} />
+                    </div>
+                    <div>
+                      <h3>{selectedTask?.title || selectedTask?.manga_id || "等待任务"}</h3>
+                      <p>
+                        {selectedTask
+                          ? `${stageLabel(selectedTask.stage)} · ${selectedTask.source}`
+                          : "先解析输入，再把可用项加入队列"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="detail-progress">
+                    <ProgressBar
+                      value={
+                        selectedTask && selectedTask.progress_total > 0
+                          ? selectedTask.progress_current / selectedTask.progress_total
+                          : 0
+                      }
+                    />
+                    <span>
+                      {selectedTask?.progress_current ?? 0}/{selectedTask?.progress_total ?? 0}
+                    </span>
+                  </div>
+                  <div className="detail-grid">
+                    <Info label="任务 ID" value={selectedTask?.task_id ?? "-"} />
+                    <Info label="重试" value={String(selectedTask?.retry_count ?? 0)} />
+                    <Info label="创建时间" value={formatTime(selectedTask?.created_at)} />
+                    <Info label="更新时间" value={formatTime(selectedTask?.updated_at)} />
+                  </div>
+                  {selectedTask?.last_error && (
+                    <div className="notice danger">
+                      <AlertTriangle size={16} />
+                      <span>{selectedTask.last_error}</span>
+                    </div>
+                  )}
+                  <div className="task-actions">
+                    <button
+                      className="button secondary"
+                      disabled={!selectedTask || !canPause(selectedTask) || loading}
+                      onClick={() => controlSelectedTask("pause")}
+                    >
+                      <Pause size={17} />暂停
+                    </button>
+                    <button
+                      className="button secondary"
+                      disabled={!selectedTask || !canResume(selectedTask) || loading}
+                      onClick={() => controlSelectedTask("resume")}
+                    >
+                      <Play size={17} />继续
+                    </button>
+                    <button
+                      className="button secondary danger-button"
+                      disabled={!selectedTask || !canCancel(selectedTask) || loading}
+                      onClick={() => controlSelectedTask("cancel")}
+                    >
+                      <XCircle size={17} />取消
+                    </button>
+                    <button
+                      className="button primary"
+                      disabled={!selectedTask || !canRetry(selectedTask) || loading}
+                      onClick={retrySelectedTask}
+                    >
+                      <RotateCcw size={17} />重试
+                    </button>
+                  </div>
+                </section>
+
+                <section className="panel compact-list">
+                  <div className="panel-header compact">
+                    <div>
+                      <span className="eyebrow">最近队列</span>
+                      <h2>任务概览</h2>
+                    </div>
+                    <button className="icon-button" title="查看下载队列" onClick={() => setActiveView("queue")}>
+                      <ArrowRight size={16} />
+                    </button>
+                  </div>
+                  <div className="mini-task-list">
+                    {tasks.slice(0, 5).map((task) => (
+                      <button
+                        className="mini-task"
+                        key={task.task_id}
+                        onClick={() => {
+                          setSelectedTaskId(task.task_id);
+                          setActiveView("queue");
+                        }}
+                      >
+                        <span className="mono">{task.manga_id}</span>
+                        <strong>{stageLabel(task.stage)}</strong>
+                        <StatusBadge status={task.status} />
+                      </button>
+                    ))}
+                    {tasks.length === 0 && <p className="empty-copy">暂无队列任务</p>}
+                  </div>
+                </section>
+              </aside>
+            </div>
           )}
 
           {activeView === "queue" && (
-            <section className="panel task-list-panel">
-              <div className="panel-header">
-                <div>
-                  <h2>下载队列</h2>
-                  <p>任务来自 SQLite，点击行可选中任务</p>
+            <div className="queue-grid">
+              <section className="panel task-list-panel">
+                <div className="panel-header">
+                  <div>
+                    <span className="eyebrow">队列管理</span>
+                    <h2>任务列表</h2>
+                    <p>点击任务可查看进度、错误和恢复操作</p>
+                  </div>
+                  <button className="button secondary" onClick={refreshTasks} disabled={loading}>
+                    <RefreshCw size={16} />刷新队列
+                  </button>
                 </div>
-                <button className="button secondary" onClick={refreshTasks} disabled={loading}>
-                  <RefreshCw size={16} />刷新队列
-                </button>
-              </div>
-              <div className="table-wrap">
-                <table className="task-table">
-                  <thead>
-                    <tr>
-                      <th>ID</th>
-                      <th>阶段</th>
-                      <th>进度</th>
-                      <th>状态</th>
-                      <th>来源</th>
-                      <th>更新时间</th>
-                      <th>操作</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredTasks.map((task) => (
-                      <tr
-                        key={task.task_id}
-                        className={task.task_id === selectedTask?.task_id ? "selected-row" : ""}
-                        onClick={() => setSelectedTaskId(task.task_id)}
-                      >
-                        <td className="mono">{task.manga_id}</td>
-                        <td>{stageLabel(task.stage)}</td>
-                        <td className="progress-cell">
-                          <ProgressBar
-                            value={
-                              task.progress_total > 0
-                                ? task.progress_current / task.progress_total
-                                : 0
-                            }
-                          />
-                          <span>{task.progress_current}/{task.progress_total}</span>
-                        </td>
-                        <td><StatusBadge status={task.status} /></td>
-                        <td>{task.source}</td>
-                        <td>{formatTime(task.updated_at)}</td>
-                        <td>
-                          <div className="row-actions">
-                            <button
-                              className="icon-button"
-                              title="暂停"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                void controlTask(task, "pause");
-                              }}
-                              disabled={!canPause(task) || loading}
-                            >
-                              <Pause size={15} />
-                            </button>
-                            <button
-                              className="icon-button"
-                              title="继续"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                void controlTask(task, "resume");
-                              }}
-                              disabled={!canResume(task) || loading}
-                            >
-                              <Play size={15} />
-                            </button>
-                            <button
-                              className="icon-button"
-                              title="重试"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                void retryTask(task);
-                              }}
-                              disabled={!canRetry(task) || loading}
-                            >
-                              <RotateCcw size={15} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                    {filteredTasks.length === 0 && (
+                <div className="segment-group" role="tablist" aria-label="任务状态过滤">
+                  {queueFilters.map((filter) => (
+                    <button
+                      key={filter.key}
+                      className={`segment ${taskFilter === filter.key ? "active" : ""}`}
+                      onClick={() => setTaskFilter(filter.key)}
+                    >
+                      {filter.label}
+                      <span>{queueCounts[filter.key]}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="table-wrap">
+                  <table className="task-table">
+                    <thead>
                       <tr>
-                        <td colSpan={7}>暂无任务</td>
+                        <th>任务</th>
+                        <th>阶段</th>
+                        <th>进度</th>
+                        <th>状态</th>
+                        <th>来源</th>
+                        <th>更新时间</th>
+                        <th>操作</th>
                       </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </section>
+                    </thead>
+                    <tbody>
+                      {filteredTasks.map((task) => (
+                        <tr
+                          key={task.task_id}
+                          className={task.task_id === selectedTask?.task_id ? "selected-row" : ""}
+                          onClick={() => setSelectedTaskId(task.task_id)}
+                        >
+                          <td>
+                            <div className="row-title">
+                              <strong>{task.title || task.manga_id}</strong>
+                              <span className="mono">{task.manga_id}</span>
+                            </div>
+                          </td>
+                          <td>{stageLabel(task.stage)}</td>
+                          <td className="progress-cell">
+                            <ProgressBar
+                              value={
+                                task.progress_total > 0
+                                  ? task.progress_current / task.progress_total
+                                  : 0
+                              }
+                            />
+                            <span>{task.progress_current}/{task.progress_total}</span>
+                          </td>
+                          <td><StatusBadge status={task.status} /></td>
+                          <td>{task.source}</td>
+                          <td>{formatTime(task.updated_at)}</td>
+                          <td>
+                            <div className="row-actions">
+                              <button
+                                className="icon-button"
+                                title="暂停"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void controlTask(task, "pause");
+                                }}
+                                disabled={!canPause(task) || loading}
+                              >
+                                <Pause size={15} />
+                              </button>
+                              <button
+                                className="icon-button"
+                                title="继续"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void controlTask(task, "resume");
+                                }}
+                                disabled={!canResume(task) || loading}
+                              >
+                                <Play size={15} />
+                              </button>
+                              <button
+                                className="icon-button"
+                                title="重试"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void retryTask(task);
+                                }}
+                                disabled={!canRetry(task) || loading}
+                              >
+                                <RotateCcw size={15} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                      {filteredTasks.length === 0 && (
+                        <tr>
+                          <td colSpan={7}>当前分类暂无任务</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+              <aside className="panel detail queue-detail">
+                <div className="panel-header compact">
+                  <div>
+                    <span className="eyebrow">任务详情</span>
+                    <h2>{selectedTask?.manga_id ?? "未选择"}</h2>
+                    <p>{selectedTask ? selectedTask.title || "未写入标题" : "从左侧选择一个任务"}</p>
+                  </div>
+                  {selectedTask && <StatusBadge status={selectedTask.status} />}
+                </div>
+                <div className="detail-grid">
+                  <Info label="阶段" value={selectedTask ? stageLabel(selectedTask.stage) : "-"} />
+                  <Info label="进度" value={`${selectedTask?.progress_current ?? 0} / ${selectedTask?.progress_total ?? 0}`} />
+                  <Info label="来源" value={selectedTask?.source ?? "-"} />
+                  <Info label="更新时间" value={formatTime(selectedTask?.updated_at)} />
+                </div>
+                <div className="task-actions">
+                  <button
+                    className="button secondary"
+                    disabled={!selectedTask || !canPause(selectedTask) || loading}
+                    onClick={() => controlSelectedTask("pause")}
+                  >
+                    <Pause size={17} />暂停
+                  </button>
+                  <button
+                    className="button secondary"
+                    disabled={!selectedTask || !canResume(selectedTask) || loading}
+                    onClick={() => controlSelectedTask("resume")}
+                  >
+                    <Play size={17} />继续
+                  </button>
+                  <button
+                    className="button secondary danger-button"
+                    disabled={!selectedTask || !canCancel(selectedTask) || loading}
+                    onClick={() => controlSelectedTask("cancel")}
+                  >
+                    <XCircle size={17} />取消
+                  </button>
+                  <button
+                    className="button primary"
+                    disabled={!selectedTask || !canRetry(selectedTask) || loading}
+                    onClick={retrySelectedTask}
+                  >
+                    <RotateCcw size={17} />重试
+                  </button>
+                </div>
+                {selectedTask?.last_error && (
+                  <div className="notice danger">
+                    <AlertTriangle size={16} />
+                    <span>{selectedTask.last_error}</span>
+                  </div>
+                )}
+              </aside>
+            </div>
           )}
 
           {activeView === "library" && (
-          <section className="panel library-panel">
-            <div className="panel-header">
-              <div>
-                <h2>本地资料库</h2>
-                <p>从 SQLite 和下载目录计算完整度、文件状态和 ZIP 状态</p>
-              </div>
-              <button className="button secondary" onClick={refreshLibrary} disabled={loading}>
-                <BookOpen size={16} />刷新资料库
-              </button>
-            </div>
-            <div className="table-wrap">
-              <table className="library-table">
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>标题</th>
-                    <th>完整度</th>
-                    <th>文件</th>
-                    <th>ZIP</th>
-                    <th>状态</th>
-                    <th>操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredLibraryItems.map((item) => (
-                    <tr
-                      key={item.manga_id}
-                      className={item.manga_id === selectedLibraryId ? "selected-row" : ""}
-                      onClick={() => void openLibraryDetail(item)}
+            <div className="library-layout">
+              <section className="panel library-panel">
+                <div className="panel-header">
+                  <div>
+                    <span className="eyebrow">本地归档</span>
+                    <h2>资料库</h2>
+                    <p>按完整度、ZIP 状态和问题文件组织内容</p>
+                  </div>
+                  <button className="button secondary" onClick={refreshLibrary} disabled={loading}>
+                    <BookOpen size={16} />刷新资料库
+                  </button>
+                </div>
+                <div className="segment-group" role="tablist" aria-label="资料库状态过滤">
+                  {libraryFilters.map((filter) => (
+                    <button
+                      key={filter.key}
+                      className={`segment ${libraryFilter === filter.key ? "active" : ""}`}
+                      onClick={() => setLibraryFilter(filter.key)}
                     >
-                      <td className="mono">{item.manga_id}</td>
-                      <td>{item.title || item.manga_id}</td>
-                      <td className="progress-cell">
-                        <ProgressBar value={item.completeness} />
-                        <span>{Math.round(item.completeness * 100)}%</span>
-                      </td>
-                      <td>
-                        {item.valid_files}/{item.total_files}
-                        {item.missing_files > 0 && (
-                          <span className="muted"> · 缺 {item.missing_files}</span>
-                        )}
-                      </td>
-                      <td>{item.zip_exists ? formatBytes(item.zip_size) : "未生成"}</td>
-                      <td><StatusBadge status={item.status} /></td>
-                      <td>
+                      {filter.label}
+                      <span>{libraryCounts[filter.key]}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="library-grid">
+                  {filteredLibraryItems.map((item) => (
+                    <article
+                      key={item.manga_id}
+                      className={`library-card ${item.manga_id === selectedLibraryId ? "selected" : ""}`}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => void openLibraryDetail(item)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          void openLibraryDetail(item);
+                        }
+                      }}
+                    >
+                      <div className="library-cover">
+                        <BookOpen size={26} />
+                      </div>
+                      <div className="library-card-body">
+                        <div className="library-card-title">
+                          <span className="mono">{item.manga_id}</span>
+                          <StatusBadge status={item.status} />
+                        </div>
+                        <h3>{item.title || item.manga_id}</h3>
+                        <div className="library-progress-row">
+                          <ProgressBar value={item.completeness} />
+                          <strong>{Math.round(item.completeness * 100)}%</strong>
+                        </div>
+                        <div className="library-meta">
+                          <span>{item.valid_files}/{item.total_files} 文件</span>
+                          <span>{item.zip_exists ? formatBytes(item.zip_size) : "未生成 ZIP"}</span>
+                          {item.missing_files > 0 && <span>缺 {item.missing_files}</span>}
+                        </div>
                         <div className="row-actions">
                           <button
                             className="icon-button"
@@ -986,19 +1312,21 @@ function App() {
                             <Archive size={15} />
                           </button>
                         </div>
-                      </td>
-                    </tr>
+                      </div>
+                    </article>
                   ))}
                   {filteredLibraryItems.length === 0 && (
-                    <tr>
-                      <td colSpan={7}>暂无资料库数据，完成下载或校验后会出现在这里</td>
-                    </tr>
+                    <div className="empty-state">
+                      <HardDrive size={28} />
+                      <strong>当前分类暂无资料</strong>
+                      <p>完成下载或校验后，条目会出现在这里。</p>
+                    </div>
                   )}
-                </tbody>
-              </table>
-            </div>
-            {selectedLibraryItem && (
-              <div className="library-detail-panel">
+                </div>
+              </section>
+
+              {selectedLibraryItem && (
+                <section className="panel library-detail-panel">
                 <div className="library-detail-header">
                   <div>
                     <span className="caption">文件明细</span>
@@ -1098,21 +1426,27 @@ function App() {
                     </tbody>
                   </table>
                 </div>
-              </div>
-            )}
-          </section>
+                </section>
+              )}
+            </div>
           )}
 
           {activeView === "logs" && (
             <section className="panel logs-panel">
               <div className="panel-header">
                 <div>
+                  <span className="eyebrow">诊断</span>
                   <h2>日志</h2>
                   <p>失败原因、阶段变化和修复结果会写入 SQLite</p>
                 </div>
                 <button className="button secondary" onClick={refreshLogs} disabled={loading}>
                   <RefreshCw size={16} />刷新日志
                 </button>
+              </div>
+              <div className="summary-strip">
+                <MiniStat label="全部" value={String(logCounts.total)} />
+                <MiniStat label="警告" value={String(logCounts.warning)} />
+                <MiniStat label="错误" value={String(logCounts.error)} />
               </div>
               <div className="table-wrap">
                 <table className="logs-table">
@@ -1156,115 +1490,166 @@ function App() {
           )}
 
           {activeView === "settings" && (
-          <section className="panel settings-panel">
-            <div className="panel-header">
-              <div>
-                <h2>设置</h2>
-                <p>{config ? `配置文件 ${config.config_path}` : "读取后台配置"}</p>
-              </div>
-              <button className="button secondary" onClick={refreshConfig} disabled={loading}>
-                <Settings size={16} />刷新设置
-              </button>
-            </div>
-            {config ? (
-              <div className="settings-grid">
-                <label className="field wide">
-                  <span>下载目录</span>
-                  <input
-                    value={config.download_path}
-                    onChange={(event) => updateConfig({ download_path: event.target.value })}
-                  />
-                </label>
-                <label className="field">
-                  <span>图片并发</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={20}
-                    value={config.max_thread}
-                    onChange={(event) => updateConfig({ max_thread: Number(event.target.value) })}
-                  />
-                </label>
-                <label className="field">
-                  <span>请求间隔 ms</span>
-                  <input
-                    type="number"
-                    min={0}
-                    max={10000}
-                    value={config.request_delay_ms}
-                    onChange={(event) =>
-                      updateConfig({ request_delay_ms: Number(event.target.value) })
-                    }
-                  />
-                </label>
-                <label className="field">
-                  <span>超时秒数</span>
-                  <input
-                    type="number"
-                    min={5}
-                    max={120}
-                    value={config.timeout_seconds}
-                    onChange={(event) =>
-                      updateConfig({ timeout_seconds: Number(event.target.value) })
-                    }
-                  />
-                </label>
-                <label className="toggle-field">
-                  <input
-                    type="checkbox"
-                    checked={config.is_zip}
-                    onChange={(event) => updateConfig({ is_zip: event.target.checked })}
-                  />
-                  <span>下载完成后生成 ZIP</span>
-                </label>
-                <label className="toggle-field">
-                  <input
-                    type="checkbox"
-                    checked={config.proxy.is_proxy}
-                    onChange={(event) =>
-                      updateProxy({ is_proxy: event.target.checked })
-                    }
-                  />
-                  <span>启用代理</span>
-                </label>
-                <label className="field">
-                  <span>代理地址</span>
-                  <input
-                    value={config.proxy.address}
-                    onChange={(event) => updateProxy({ address: event.target.value })}
-                  />
-                </label>
-                <label className="field">
-                  <span>代理端口</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={65535}
-                    value={config.proxy.port}
-                    onChange={(event) => updateProxy({ port: Number(event.target.value) })}
-                  />
-                </label>
-                <label className="field wide">
-                  <span>扩展 Token</span>
-                  <input
-                    value={config.extension_token}
-                    placeholder={config.extension_token_set ? "已设置" : "未设置"}
-                    onChange={(event) => updateConfig({ extension_token: event.target.value })}
-                  />
-                </label>
-                <div className="settings-actions">
-                  <button className="button secondary" onClick={generateExtensionToken} disabled={loading}>
-                    生成 Token
-                  </button>
-                  <button className="button primary" onClick={saveConfig} disabled={loading}>
-                    保存设置
-                  </button>
+            <section className="panel settings-panel">
+              <div className="panel-header">
+                <div>
+                  <span className="eyebrow">系统配置</span>
+                  <h2>下载与扩展</h2>
+                  <p>{config ? `配置文件 ${config.config_path}` : "读取后台配置"}</p>
                 </div>
+                <button className="button secondary" onClick={refreshConfig} disabled={loading}>
+                  <Settings size={16} />刷新设置
+                </button>
               </div>
-            ) : (
-              <div className="settings-empty">暂无配置</div>
-            )}
-          </section>
+              {config ? (
+                <div className="settings-layout">
+                  <section className="settings-section wide">
+                    <div className="settings-section-title">
+                      <HardDrive size={18} />
+                      <div>
+                        <h3>下载存储</h3>
+                        <p>控制文件落盘、并发、延迟和 ZIP 打包</p>
+                      </div>
+                    </div>
+                    <div className="settings-form-grid">
+                      <label className="field wide">
+                        <span>下载目录</span>
+                        <input
+                          value={config.download_path}
+                          onChange={(event) => updateConfig({ download_path: event.target.value })}
+                        />
+                      </label>
+                      <label className="field">
+                        <span>图片并发</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={20}
+                          value={config.max_thread}
+                          onChange={(event) => updateConfig({ max_thread: Number(event.target.value) })}
+                        />
+                      </label>
+                      <label className="field">
+                        <span>请求间隔 ms</span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={10000}
+                          value={config.request_delay_ms}
+                          onChange={(event) =>
+                            updateConfig({ request_delay_ms: Number(event.target.value) })
+                          }
+                        />
+                      </label>
+                      <label className="field">
+                        <span>超时秒数</span>
+                        <input
+                          type="number"
+                          min={5}
+                          max={120}
+                          value={config.timeout_seconds}
+                          onChange={(event) =>
+                            updateConfig({ timeout_seconds: Number(event.target.value) })
+                          }
+                        />
+                      </label>
+                      <label className="toggle-field">
+                        <input
+                          type="checkbox"
+                          checked={config.is_zip}
+                          onChange={(event) => updateConfig({ is_zip: event.target.checked })}
+                        />
+                        <span>下载完成后生成 ZIP</span>
+                      </label>
+                    </div>
+                  </section>
+
+                  <section className="settings-section">
+                    <div className="settings-section-title">
+                      <Network size={18} />
+                      <div>
+                        <h3>代理</h3>
+                        <p>按需接入代理访问源站</p>
+                      </div>
+                    </div>
+                    <div className="settings-form-grid compact">
+                      <label className="toggle-field full-row">
+                        <input
+                          type="checkbox"
+                          checked={config.proxy.is_proxy}
+                          onChange={(event) =>
+                            updateProxy({ is_proxy: event.target.checked })
+                          }
+                        />
+                        <span>启用代理</span>
+                      </label>
+                      <label className="field">
+                        <span>代理地址</span>
+                        <input
+                          value={config.proxy.address}
+                          onChange={(event) => updateProxy({ address: event.target.value })}
+                        />
+                      </label>
+                      <label className="field">
+                        <span>代理端口</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={65535}
+                          value={config.proxy.port}
+                          onChange={(event) => updateProxy({ port: Number(event.target.value) })}
+                        />
+                      </label>
+                      <label className="field">
+                        <span>代理账号</span>
+                        <input
+                          value={config.proxy.username}
+                          onChange={(event) => updateProxy({ username: event.target.value })}
+                        />
+                      </label>
+                      <label className="field">
+                        <span>代理密码</span>
+                        <input
+                          type="password"
+                          value={config.proxy.password}
+                          onChange={(event) => updateProxy({ password: event.target.value })}
+                        />
+                      </label>
+                    </div>
+                  </section>
+
+                  <section className="settings-section">
+                    <div className="settings-section-title">
+                      <Server size={18} />
+                      <div>
+                        <h3>浏览器扩展</h3>
+                        <p>管理后台与扩展之间的访问 Token</p>
+                      </div>
+                    </div>
+                    <div className="settings-form-grid compact">
+                      <label className="field full-row">
+                        <span>扩展 Token</span>
+                        <input
+                          value={config.extension_token}
+                          placeholder={config.extension_token_set ? "已设置" : "未设置"}
+                          onChange={(event) => updateConfig({ extension_token: event.target.value })}
+                        />
+                      </label>
+                      <div className="settings-actions full-row">
+                        <button className="button secondary" onClick={generateExtensionToken} disabled={loading}>
+                          <ShieldCheck size={16} />生成 Token
+                        </button>
+                        <button className="button primary" onClick={saveConfig} disabled={loading}>
+                          <CheckCircle2 size={16} />保存设置
+                        </button>
+                      </div>
+                    </div>
+                  </section>
+                </div>
+              ) : (
+                <div className="settings-empty">暂无配置</div>
+              )}
+            </section>
           )}
         </section>
       </main>
@@ -1272,13 +1657,39 @@ function App() {
   );
 }
 
-function Metric({ label, value, detail }: { label: string; value: string; detail: string }) {
+function Metric({
+  label,
+  value,
+  detail,
+  Icon,
+  tone
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  Icon: IconComponent;
+  tone: "indigo" | "blue" | "green" | "orange";
+}) {
   return (
-    <article className="metric">
+    <article className={`metric ${tone}`}>
+      <div className="metric-icon">
+        <Icon size={19} />
+      </div>
+      <div>
+        <span>{label}</span>
+        <strong>{value}</strong>
+        <p>{detail}</p>
+      </div>
+    </article>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="mini-stat">
       <span>{label}</span>
       <strong>{value}</strong>
-      <p>{detail}</p>
-    </article>
+    </div>
   );
 }
 
