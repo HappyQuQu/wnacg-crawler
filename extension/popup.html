@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>WNACG Downloader</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+        color: #1d1d1f;
+      }
+
+      body {
+        width: 320px;
+        margin: 0;
+        background: #f5f5f7;
+      }
+
+      main {
+        padding: 14px;
+        display: grid;
+        gap: 12px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 16px;
+      }
+
+      p {
+        margin: 4px 0 0;
+        color: #6e6e73;
+        font-size: 12px;
+      }
+
+      .card {
+        border: 1px solid rgba(60, 60, 67, 0.14);
+        border-radius: 12px;
+        background: #fff;
+        padding: 12px;
+        display: grid;
+        gap: 10px;
+      }
+
+      .row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .status {
+        border-radius: 999px;
+        padding: 4px 9px;
+        color: #1a7f37;
+        background: rgba(52, 199, 89, 0.12);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      button {
+        min-height: 36px;
+        border: 0;
+        border-radius: 10px;
+        padding: 0 12px;
+        cursor: pointer;
+        font: inherit;
+        font-weight: 700;
+      }
+
+      .primary {
+        color: #fff;
+        background: #007aff;
+      }
+
+      .secondary {
+        color: #1d1d1f;
+        background: #fff;
+        border: 1px solid rgba(60, 60, 67, 0.14);
+      }
+
+      .actions {
+        display: grid;
+        gap: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="card">
+        <div class="row">
+          <div>
+            <h1>Downloader</h1>
+            <p id="server">检测后台连接</p>
+          </div>
+          <span class="status" id="status">待检测</span>
+        </div>
+      </section>
+
+      <section class="card">
+        <div>
+          <h1 id="page-title">当前页面</h1>
+          <p id="page-meta">等待识别</p>
+        </div>
+        <div class="actions">
+          <button class="primary" id="submit">加入队列</button>
+          <button class="secondary" id="open-admin">打开后台</button>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="dist/popup.js"></script>
+  </body>
+</html>
+

@@ -1,0 +1,17 @@
+{
+  "name": "wnacg-downloader-workspace",
+  "version": "2.0.0-dev",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "extension"
+  ],
+  "scripts": {
+    "dev:frontend": "npm run dev -w frontend",
+    "build:frontend": "npm run build -w frontend",
+    "build:extension": "npm run build -w extension",
+    "package:extension": "bash scripts/package-extension.sh",
+    "typecheck:extension": "npm run typecheck -w extension",
+    "validate": "bash scripts/validate.sh"
+  }
+}

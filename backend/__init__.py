@@ -1,1 +1,1 @@
-# backend 包入口
+"""WNACG Downloader backend package."""

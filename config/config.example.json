@@ -1,0 +1,18 @@
+{
+  "download_path": "./data",
+  "db_path": "./config/data.sqlite",
+  "is_zip": true,
+  "max_thread": 6,
+  "re_count": 5,
+  "request_delay_ms": 1200,
+  "timeout_seconds": 30,
+  "proxy": {
+    "is_proxy": false,
+    "address": "127.0.0.1",
+    "port": 7890,
+    "username": "",
+    "password": ""
+  },
+  "extension_token": ""
+}
+

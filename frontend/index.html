@@ -1,104 +1,12 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
-
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WNACG Downloader</title>
-  <link rel="stylesheet" href="/static/style.css">
-</head>
-
-<body>
-  <!-- 顶部栏 -->
-  <header class="topbar">
-    <div class="topbar-brand">
-      <span class="brand-icon">📦</span>
-      <span class="brand-name">WNACG Downloader</span>
-    </div>
-    <div class="topbar-nav">
-      <span id="ws-status" class="ws-badge disconnected">⚪ 未连接</span>
-    </div>
-  </header>
-
-  <!-- 主体：左右分屏 -->
-  <main class="split-layout">
-    <!-- 左屏：代理浏览器 -->
-    <section class="panel panel-browser" id="browser-panel">
-      <div class="panel-header">
-        <span class="panel-title">🌐 浏览</span>
-        <div class="url-bar">
-          <button class="btn-icon" id="btn-home" title="首页">🏠</button>
-          <button class="btn-icon" id="btn-back" title="后退">◀</button>
-          <button class="btn-icon" id="btn-forward" title="前进">▶</button>
-          <input type="text" id="url-input" class="url-input" placeholder="输入页码或网址...">
-          <button class="btn-icon" id="btn-go" title="跳转">⏎</button>
-        </div>
-      </div>
-      <div class="browser-frame-wrapper">
-        <div id="browser-loading" class="loading-overlay hidden">
-          <div class="spinner"></div>
-          <span>加载中...</span>
-        </div>
-        <iframe id="browser-frame" src="" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>
-      </div>
-    </section>
-
-    <!-- 分隔线（可拖拽） -->
-    <div class="divider" id="divider"></div>
-
-    <!-- 右屏：下载面板 -->
-    <section class="panel panel-download" id="download-panel">
-      <div class="panel-header">
-        <span class="panel-title">⬇️ 下载队列</span>
-        <button class="btn-secondary" id="btn-settings">⚙️ 设置</button>
-      </div>
-
-      <!-- 手动添加区 -->
-      <div class="add-task-bar">
-        <input type="text" id="manga-id-input" class="manga-id-input" placeholder="漫画 ID（多个用换行分隔）">
-        <button class="btn-primary" id="btn-add-task">添加</button>
-      </div>
-
-      <!-- 任务列表 -->
-      <div class="task-list" id="task-list">
-        <div class="empty-hint" id="empty-hint">暂无下载任务</div>
-      </div>
-    </section>
-  </main>
-
-  <!-- 设置弹窗 -->
-  <div class="modal-overlay hidden" id="settings-modal">
-    <div class="modal">
-      <div class="modal-header">
-        <span>⚙️ 设置</span>
-        <button class="btn-icon" id="btn-close-settings">✕</button>
-      </div>
-      <div class="modal-body">
-        <label>并发下载数
-          <input type="number" id="cfg-max-thread" min="1" max="50" value="10">
-        </label>
-        <label>打包 ZIP
-          <input type="checkbox" id="cfg-is-zip" checked>
-        </label>
-        <label>使用代理
-          <input type="checkbox" id="cfg-is-proxy">
-        </label>
-        <div id="proxy-fields" class="proxy-fields hidden">
-          <label>代理地址
-            <input type="text" id="cfg-proxy-addr" value="127.0.0.1">
-          </label>
-          <label>端口
-            <input type="number" id="cfg-proxy-port" value="7890">
-          </label>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn-primary" id="btn-save-settings">保存</button>
-      </div>
-    </div>
-  </div>
-
-  <script src="/static/app.js"></script>
-</body>
-
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WNACG Downloader</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>

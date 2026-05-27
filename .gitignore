@@ -181,5 +181,19 @@ cython_debug/
 .cursorindexingignore
 /dotnetcore
 .DS_Store
+
+# Local runtime data
 /data
+/logs
+/old
 config/data.sqlite
+config/data.sqlite-*
+config/config.json
+config/config.local.json
+
+# Node / frontend build output
+node_modules/
+frontend/dist/
+frontend/tsconfig.tsbuildinfo
+extension/dist/
+extension/tsconfig.tsbuildinfo

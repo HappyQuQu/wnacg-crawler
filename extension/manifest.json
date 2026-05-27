@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "WNACG Downloader",
+  "version": "2.0.0",
+  "description": "Send WNACG pages to the local downloader.",
+  "permissions": ["storage", "contextMenus", "activeTab", "scripting"],
+  "host_permissions": [
+    "http://127.0.0.1:8080/*",
+    "http://localhost:8080/*",
+    "https://www.wnacg.com/*",
+    "https://wnacg.com/*",
+    "https://www.wnacg.org/*",
+    "https://wnacg.org/*"
+  ],
+  "background": {
+    "service_worker": "dist/background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.wnacg.com/*",
+        "https://wnacg.com/*",
+        "https://www.wnacg.org/*",
+        "https://wnacg.org/*"
+      ],
+      "js": ["dist/content.js"]
+    }
+  ],
+  "action": {
+    "default_title": "WNACG Downloader",
+    "default_popup": "popup.html"
+  },
+  "options_page": "options.html"
+}
+

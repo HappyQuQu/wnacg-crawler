@@ -1,9 +1,0 @@
-{
-  "max_thread": 10,
-  "is_zip": true,
-  "proxy": {
-    "is_proxy": true,
-    "address": "127.0.0.1",
-    "port": 7890
-  }
-}
