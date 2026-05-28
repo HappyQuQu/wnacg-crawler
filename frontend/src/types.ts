@@ -11,6 +11,7 @@ export type ParsedItem = {
   valid: boolean;
   status: string;
   title: string;
+  cover_url: string;
   page_count: number;
   pic_count: number;
   source: string;
@@ -66,6 +67,7 @@ export type LibraryFile = {
 export type LibraryItem = {
   manga_id: string;
   title: string;
+  cover_url: string;
   status: string;
   manga_status: string;
   task_id: string | null;
@@ -103,6 +105,8 @@ export type TaskProgressMessage = {
   type: "task_progress";
   task_id: string;
   manga_id: string;
+  title: string;
+  cover_url: string;
   status: string;
   stage: string;
   current: number;
@@ -113,7 +117,9 @@ export type TaskProgressMessage = {
 export type WsStatus = "connecting" | "connected" | "fallback";
 export type ViewKey = "dashboard" | "tasks" | "library" | "settings";
 export type QueueFilter = "all" | "active" | "failed" | "partial" | "completed";
-export type LibraryFilter = "all" | "completed" | "partial" | "failed" | "missing";
+export type LibraryFilter = "all" | "completed" | "partial" | "failed" | "missing" | "zipped" | "unzipped";
+export type LibrarySortKey = "updated_at" | "title" | "completeness" | "pic_count" | "zip_size";
+export type LibraryViewMode = "card" | "list";
 
 export type LogItem = {
   id: number;

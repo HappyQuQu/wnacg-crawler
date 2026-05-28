@@ -29,8 +29,17 @@ export async function fetchTasks(): Promise<TaskList> {
   return api<TaskList>("/api/tasks");
 }
 
-export async function fetchLibrary(): Promise<LibraryList> {
-  return api<LibraryList>("/api/library");
+export async function fetchLibrary(params?: {
+  sort_by?: string;
+  sort_order?: string;
+  zip_status?: string;
+}): Promise<LibraryList> {
+  const searchParams = new URLSearchParams();
+  if (params?.sort_by) searchParams.set("sort_by", params.sort_by);
+  if (params?.sort_order) searchParams.set("sort_order", params.sort_order);
+  if (params?.zip_status) searchParams.set("zip_status", params.zip_status);
+  const qs = searchParams.toString();
+  return api<LibraryList>(`/api/library${qs ? `?${qs}` : ""}`);
 }
 
 export async function fetchLogs(): Promise<LogList> {
