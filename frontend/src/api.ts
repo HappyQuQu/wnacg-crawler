@@ -6,6 +6,7 @@ import type {
   LibraryItem,
   LibraryList,
   LibraryRetryFailedResult,
+  LibrarySortKey,
   LogList,
   AppConfig,
 } from "./types";
@@ -30,9 +31,9 @@ export async function fetchTasks(): Promise<TaskList> {
 }
 
 export async function fetchLibrary(params?: {
-  sort_by?: string;
-  sort_order?: string;
-  zip_status?: string;
+  sort_by?: LibrarySortKey;
+  sort_order?: "asc" | "desc";
+  zip_status?: "zipped" | "unzipped";
 }): Promise<LibraryList> {
   const searchParams = new URLSearchParams();
   if (params?.sort_by) searchParams.set("sort_by", params.sort_by);
