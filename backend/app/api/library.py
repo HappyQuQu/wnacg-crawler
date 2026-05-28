@@ -1,3 +1,5 @@
+from typing import Literal
+
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 
 from backend.app.core.schemas import ApiResponse
@@ -12,8 +14,8 @@ async def list_library(
     q: str | None = None,
     status: str | None = None,
     sort_by: str = "updated_at",
-    sort_order: str = "desc",
-    zip_status: str | None = None,
+    sort_order: Literal["asc", "desc"] = "desc",
+    zip_status: Literal["zipped", "unzipped"] | None = None,
 ):
     return ApiResponse(data=await library_service.list(
         q=q, status=status, sort_by=sort_by, sort_order=sort_order, zip_status=zip_status,
