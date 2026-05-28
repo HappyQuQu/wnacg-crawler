@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import type { LibraryItem } from "../types";
 import { formatBytes, formatTime, libraryDisplayName } from "../utils";
-import { Info, ProgressBar, StatusBadge } from "./Common";
+import { Info, StatusBadge } from "./Common";
 
 export function LibraryDetailPanel({
   item,
