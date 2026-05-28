@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import zipfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -18,10 +19,18 @@ MangaPicPages = list[MangaPicPage]
 DownloadFiles = list[DownloadFile]
 FileRow = dict[str, Any]
 FileRows = list[FileRow]
+SortItems = list[dict]
 
 
 class LibraryService:
-    async def list(self, q: str | None = None, status: str | None = None) -> dict:
+    async def list(
+        self,
+        q: str | None = None,
+        status: str | None = None,
+        sort_by: str = "updated_at",
+        sort_order: str = "desc",
+        zip_status: str | None = None,
+    ) -> dict:
         async with SessionLocal() as session:
             manga_repo = MangaRepository(session)
             file_repo = FileRepository(session)
@@ -35,8 +44,26 @@ class LibraryService:
                 item = self._summary(info, pic_pages, files, task)
                 if status and item["status"] != status:
                     continue
+                if zip_status == "zipped" and not item["zip_exists"]:
+                    continue
+                if zip_status == "unzipped" and item["zip_exists"]:
+                    continue
                 items.append(item)
+            items = self._sort_items(items, sort_by, sort_order)
             return {"items": items, "total": len(items)}
+
+    _SORT_KEYS: dict[str, Callable[[dict], Any]] = {
+        "updated_at": lambda i: i.get("updated_at") or "",
+        "title": lambda i: (i.get("title") or "").lower(),
+        "completeness": lambda i: i.get("completeness", 0),
+        "pic_count": lambda i: i.get("pic_count", 0),
+        "zip_size": lambda i: i.get("zip_size", 0),
+    }
+
+    def _sort_items(self, items: SortItems, sort_by: str, sort_order: str) -> SortItems:
+        key_fn = self._SORT_KEYS.get(sort_by, self._SORT_KEYS["updated_at"])
+        reverse = sort_order == "desc"
+        return sorted(items, key=key_fn, reverse=reverse)
 
     async def get(self, manga_id: str) -> dict | None:
         async with SessionLocal() as session:

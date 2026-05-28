@@ -8,8 +8,16 @@ router = APIRouter(prefix="/api/library", tags=["library"])
 
 
 @router.get("", response_model=ApiResponse)
-async def list_library(q: str | None = None, status: str | None = None):
-    return ApiResponse(data=await library_service.list(q=q, status=status))
+async def list_library(
+    q: str | None = None,
+    status: str | None = None,
+    sort_by: str = "updated_at",
+    sort_order: str = "desc",
+    zip_status: str | None = None,
+):
+    return ApiResponse(data=await library_service.list(
+        q=q, status=status, sort_by=sort_by, sort_order=sort_order, zip_status=zip_status,
+    ))
 
 
 @router.get("/{manga_id}", response_model=ApiResponse)
