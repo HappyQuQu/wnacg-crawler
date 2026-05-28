@@ -240,6 +240,7 @@ function App() {
               selectedTask={tasks.selectedTask}
               logItems={logs.logItems}
               queueCounts={tasks.queueCounts}
+              noImageMode={noImageMode}
               searchQuery={searchQuery}
               loading={loading}
               initialLoading={tasks.initialLoading}
@@ -265,13 +266,20 @@ function App() {
               searchQuery={searchQuery}
               loading={loading}
               initialLoading={library.initialLoading}
+              sortBy={library.sortBy}
+              sortOrder={library.sortOrder}
+              viewMode={library.viewMode}
               onOpenDetail={library.openDetail}
+              onCloseDetail={library.closeDetail}
               onVerify={handleVerify}
               onZip={handleZip}
               onRetryFailed={handleRetryFailed}
               onRefresh={library.refresh}
               onRefreshDetail={() => { if (library.selectedLibraryId) void library.loadDetail(library.selectedLibraryId); }}
               setShowOnlyProblemFiles={library.setShowOnlyProblemFiles}
+              onSortChange={library.setSortBy}
+              onToggleSortOrder={() => library.setSortOrder(library.sortOrder === "desc" ? "asc" : "desc")}
+              onViewModeChange={library.setViewMode}
             />
           )}
 
