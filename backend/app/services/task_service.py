@@ -6,7 +6,7 @@ from backend.app.core.schemas import (
     TaskCreateRequest,
 )
 from backend.app.db.database import SessionLocal
-from backend.app.db.repository import TaskRepository, task_to_dict
+from backend.app.db.repository import MangaRepository, TaskRepository, task_to_dict
 
 LEGAL_TRANSITIONS = {
     "pending": {"queued", "cancelled"},
@@ -36,6 +36,23 @@ class TaskService:
             repo = TaskRepository(session)
             tasks = await repo.list(status=status)
             items = [task_to_dict(task) for task in tasks]
+
+            manga_ids = {t.manga_id for t in tasks}
+            if manga_ids:
+                manga_repo = MangaRepository(session)
+                title_map: dict[str, str] = {}
+                cover_map: dict[str, str] = {}
+                for info in await manga_repo.list_infos():
+                    if info.id in manga_ids:
+                        title_map[info.id] = info.title
+                        cover_map[info.id] = info.cover_url
+                for item in items:
+                    mid = item["manga_id"]
+                    if mid in title_map:
+                        item["title"] = title_map[mid]
+                    if mid in cover_map:
+                        item["cover_url"] = cover_map[mid]
+
             return {"items": items, "total": len(items)}
 
     async def get(self, task_id: str) -> dict | None:

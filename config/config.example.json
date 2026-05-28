@@ -13,6 +13,14 @@
     "username": "",
     "password": ""
   },
-  "extension_token": ""
+  "extension_token": "",
+  "fetch_mode": "auto",
+  "enable_browser": true,
+  "browser_headless": true,
+  "enable_stealth": true,
+  "crawler_min_delay": 2,
+  "crawler_max_delay": 5,
+  "crawler_max_retry": 2,
+  "crawler_403_backoff": 30,
+  "debug_save_on_fail": true
 }
-

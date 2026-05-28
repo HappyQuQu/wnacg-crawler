@@ -300,6 +300,7 @@ def task_to_dict(task: DownloadTask) -> dict:
         "task_id": task.id,
         "manga_id": task.manga_id,
         "title": "",
+        "cover_url": "",
         "source": task.source,
         "status": task.status,
         "stage": task.stage,

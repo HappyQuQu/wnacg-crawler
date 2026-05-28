@@ -7,6 +7,7 @@ from backend.app.core.config import get_settings
 from backend.app.core.paths import manga_dir, safe_filename, zip_path
 from backend.app.crawler.downloader import downloader, image_extension, is_valid_image
 from backend.app.crawler.parser import PicPageItem, manga_parser
+from backend.app.crawler.smart_fetcher import smart_fetch
 from backend.app.db.database import SessionLocal
 from backend.app.db.models import DownloadFile, MangaPicPage
 from backend.app.db.repository import (
@@ -140,7 +141,7 @@ class TaskRunner:
         await self._set_task(task_id, "running", "fetching_info")
         await self._ensure_runnable(task_id)
         url = settings.manga_page_url.format(page=1, aid=manga_id)
-        html = await downloader.get_text(url, referer=settings.manga_main_url)
+        html = await smart_fetch(url, referer=settings.manga_main_url)
         await self._ensure_runnable(task_id)
         parsed = manga_parser.parse_manga_info(html, manga_id)
         async with SessionLocal() as session:
@@ -183,7 +184,7 @@ class TaskRunner:
                 await self._set_task(task_id, "running", "fetching_pages", page_index, page_count)
                 continue
             url = settings.manga_page_url.format(page=page_index, aid=manga_id)
-            html = await downloader.get_text(url, referer=settings.manga_main_url)
+            html = await smart_fetch(url, referer=settings.manga_main_url)
             await self._ensure_runnable(task_id)
             async with SessionLocal() as session:
                 await MangaRepository(session).upsert_page(manga_id, page_index, url, html)
@@ -213,7 +214,7 @@ class TaskRunner:
         await self._set_task(task_id, "running", "resolving_images", 0, len(items))
         for item in items:
             await self._ensure_runnable(task_id)
-            html = await downloader.get_text(item.page_url, referer=settings.manga_main_url)
+            html = await smart_fetch(item.page_url, referer=settings.manga_main_url)
             await self._ensure_runnable(task_id)
             pic_url = manga_parser.parse_pic_url(html, settings.manga_main_url)
             status = "resolved" if pic_url else "failed"
@@ -447,7 +448,7 @@ class TaskRunner:
         settings = get_settings()
         await self._set_task(task_id, "running", "resolving_images", current, total)
         await self._ensure_runnable(task_id)
-        html = await downloader.get_text(page.page_url, referer=settings.manga_main_url)
+        html = await smart_fetch(page.page_url, referer=settings.manga_main_url)
         await self._ensure_runnable(task_id)
         pic_url = manga_parser.parse_pic_url(html, settings.manga_main_url)
         status = "resolved" if pic_url else "failed"

@@ -27,7 +27,17 @@ class MangaParser:
                 nums.append(int(match.group(1)))
         if nums:
             page_count = max(nums)
-        return {"id": manga_id, "title": title, "page_count": page_count, "cover_url": ""}
+
+        cover_url = ""
+        for img in soup.find_all("img", src=True):
+            src = str(img["src"])
+            if "qy0.ru" in src or "upaiyun" in src or "img.wnacg" in src:
+                if not src.startswith("http"):
+                    src = f"https:{src}" if src.startswith("//") else src
+                cover_url = src
+                break
+
+        return {"id": manga_id, "title": title, "page_count": page_count, "cover_url": cover_url}
 
     def parse_pic_page_list(self, html: str, manga_id: str, main_url: str) -> list[PicPageItem]:
         soup = BeautifulSoup(html, "html.parser")

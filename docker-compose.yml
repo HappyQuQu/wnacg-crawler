@@ -6,6 +6,13 @@ services:
     volumes:
       - ./data:/app/data
       - ./config:/app/config
+    shm_size: "2gb"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - FETCH_MODE=auto
+      - ENABLE_BROWSER=true
+      - ENABLE_STEALTH=false
+      - BROWSER_HEADLESS=true
     healthcheck:
       test:
         [

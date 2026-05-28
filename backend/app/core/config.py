@@ -39,6 +39,18 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://127.0.0.1:5173", "http://localhost:5173"]
     proxy: ProxySettings = ProxySettings()
 
+    # Playwright / anti-403
+    fetch_mode: str = Field(default="auto", pattern="^(http|browser|auto|full)$")
+    enable_browser: bool = True
+    browser_headless: bool = True
+    browser_state_path: str = ""
+    debug_save_on_fail: bool = True
+    crawler_min_delay: float = Field(default=2.0, ge=0)
+    crawler_max_delay: float = Field(default=5.0, ge=0)
+    crawler_max_retry: int = Field(default=2, ge=0, le=10)
+    crawler_403_backoff: float = Field(default=30.0, ge=0)
+    enable_stealth: bool = False
+
     model_config = SettingsConfigDict(
         env_prefix="WNACG_",
         env_nested_delimiter="__",

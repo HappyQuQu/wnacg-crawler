@@ -16,7 +16,9 @@ dependencies = [
   "pydantic-settings>=2.0",
   "tenacity>=8.0",
   "loguru>=0.7",
-  "alembic>=1.13"
+  "alembic>=1.13",
+  "playwright>=1.44,<1.50",
+  "playwright-stealth>=1.0"
 ]
 
 [project.optional-dependencies]

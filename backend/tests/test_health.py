@@ -105,7 +105,7 @@ def test_library_retry_failed_files_re_resolves_missing_pic_url(monkeypatch):
 
     from backend.app.services import task_runner as runner_module
 
-    async def fake_get_text(url: str, referer: str | None = None) -> str:
+    async def fake_smart_fetch(url: str, referer: str | None = None) -> str:
         assert url == "https://example.test/missing-pic-url.html"
         return '<span id="imgarea"><img src="/images/recovered.jpg"></span>'
 
@@ -114,7 +114,7 @@ def test_library_retry_failed_files_re_resolves_missing_pic_url(monkeypatch):
         assert referer == "https://example.test/missing-pic-url.html"
         return b"\xff\xd8\xff" + b"2" * (16 * 1024)
 
-    monkeypatch.setattr(runner_module.downloader, "get_text", fake_get_text)
+    monkeypatch.setattr(runner_module, "smart_fetch", fake_smart_fetch)
     monkeypatch.setattr(runner_module.downloader, "get_bytes", fake_get_bytes)
 
     client = TestClient(app)

@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.api import config, extension, health, inputs, library, logs, tasks, ws
 from backend.app.core.config import get_settings
+from backend.app.crawler.browser_fetcher import browser_manager
 from backend.app.crawler.downloader import downloader
 from backend.app.db.database import init_db
 from backend.app.services.log_service import log_service
@@ -18,6 +19,7 @@ async def lifespan(app: FastAPI):
     await log_service.backfill_existing_failures()
     await task_runner.restore_queued_tasks()
     yield
+    await browser_manager.close()
     await downloader.close()
 
 
