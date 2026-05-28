@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { LibraryItem } from "../types";
+import type { LibraryItem, LibrarySortKey, LibraryViewMode } from "../types";
 import { fetchLibrary, fetchLibraryDetail, verifyLibraryApi, zipLibraryApi, retryFailedLibraryApi } from "../api";
 import { isProblemFile } from "../utils";
 
@@ -10,12 +10,26 @@ export function useLibrary() {
   const [libraryDetailLoading, setLibraryDetailLoading] = useState(false);
   const [showOnlyProblemFiles, setShowOnlyProblemFiles] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
+  const [sortBy, setSortBy] = useState<LibrarySortKey>("updated_at");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+  const [viewMode, setViewMode] = useState<LibraryViewMode>(() => {
+    try {
+      return (localStorage.getItem("wnacg-library-view") as LibraryViewMode) || "card";
+    } catch {
+      return "card";
+    }
+  });
+
+  const setViewModePersist = useCallback((v: LibraryViewMode) => {
+    setViewMode(v);
+    try { localStorage.setItem("wnacg-library-view", v); } catch { /* ignore */ }
+  }, []);
 
   const refresh = useCallback(async () => {
-    const data = await fetchLibrary();
+    const data = await fetchLibrary({ sort_by: sortBy, sort_order: sortOrder });
     setLibraryItems(data.items);
     setInitialLoading(false);
-  }, []);
+  }, [sortBy, sortOrder]);
 
   const loadDetail = useCallback(async (mangaId: string) => {
     setLibraryDetailLoading(true);
@@ -31,6 +45,11 @@ export function useLibrary() {
     setSelectedLibraryId(item.manga_id);
     await loadDetail(item.manga_id);
   }, [loadDetail]);
+
+  const closeDetail = useCallback(() => {
+    setSelectedLibraryId(null);
+    setSelectedLibraryItem(null);
+  }, []);
 
   const verifyItem = useCallback(async (item: LibraryItem) => {
     const result = await verifyLibraryApi(item.manga_id);
@@ -69,6 +88,8 @@ export function useLibrary() {
     partial: libraryItems.filter((i) => i.status === "partial").length,
     failed: libraryItems.filter((i) => i.status === "failed").length,
     missing: libraryItems.filter((i) => i.status === "missing" || i.missing_files > 0 || i.failed_files > 0).length,
+    zipped: libraryItems.filter((i) => i.zip_exists).length,
+    unzipped: libraryItems.filter((i) => !i.zip_exists).length,
   }), [libraryItems]);
 
   useEffect(() => {
@@ -86,6 +107,11 @@ export function useLibrary() {
     if (selectedLibraryId) void loadDetail(selectedLibraryId);
   }, [selectedLibraryId, loadDetail]);
 
+  // Re-fetch when sort changes
+  useEffect(() => {
+    void refresh();
+  }, [sortBy, sortOrder, refresh]);
+
   return {
     libraryItems,
     selectedLibraryId,
@@ -97,9 +123,16 @@ export function useLibrary() {
     setShowOnlyProblemFiles,
     libraryCounts,
     initialLoading,
+    sortBy,
+    setSortBy,
+    sortOrder,
+    setSortOrder,
+    viewMode,
+    setViewMode: setViewModePersist,
     refresh,
     loadDetail,
     openDetail,
+    closeDetail,
     verifyItem,
     zipItem,
     retryFailed,
