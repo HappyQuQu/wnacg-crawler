@@ -6,7 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.111",
   "uvicorn[standard]>=0.29",
-  "httpx>=0.28",
+  "curl-cffi>=0.15",
   "beautifulsoup4>=4.12",
   "lxml>=5.0",
   "sqlalchemy>=2.0",

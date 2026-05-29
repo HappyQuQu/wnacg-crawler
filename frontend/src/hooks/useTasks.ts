@@ -26,6 +26,8 @@ export function useTasks() {
         matched = true;
         return {
           ...task,
+          title: payload.title || task.title,
+          cover_url: payload.cover_url || task.cover_url,
           status: payload.status,
           stage: payload.stage,
           progress_current: payload.current,
@@ -40,8 +42,8 @@ export function useTasks() {
           id: payload.task_id,
           task_id: payload.task_id,
           manga_id: payload.manga_id,
-          title: "",
-          cover_url: "",
+          title: payload.title || "",
+          cover_url: payload.cover_url || "",
           source: "websocket",
           status: payload.status,
           stage: payload.stage,

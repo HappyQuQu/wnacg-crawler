@@ -5,9 +5,9 @@ from pathlib import Path
 
 from backend.app.core.config import get_settings
 from backend.app.core.paths import manga_dir, safe_filename, zip_path
-from backend.app.crawler.downloader import downloader, image_extension, is_valid_image
+from backend.app.crawler.downloader import image_extension, is_valid_image
 from backend.app.crawler.parser import PicPageItem, manga_parser
-from backend.app.crawler.smart_fetcher import smart_fetch
+from backend.app.crawler.smart_fetcher import smart_fetch, smart_fetch_bytes
 from backend.app.db.database import SessionLocal
 from backend.app.db.models import DownloadFile, MangaPicPage
 from backend.app.db.repository import (
@@ -288,10 +288,13 @@ class TaskRunner:
                     if already_valid:
                         status = "valid"
                     else:
-                        data = await downloader.get_bytes(page.pic_url, referer=page.page_url)
+                        data = await smart_fetch_bytes(page.pic_url, referer=page.page_url)
                         await self._ensure_runnable(task_id)
                         if not is_valid_image(data):
-                            raise RuntimeError("响应不是有效图片")
+                            raise RuntimeError(
+                                "图片下载失败（HTTP 和浏览器均无法获取有效图片，"
+                                "可能被 Cloudflare 拦截或源文件损坏）"
+                            )
                         await asyncio.to_thread(file_path.write_bytes, data)
                         status = "valid"
                     await self._record_file(manga_id, page.pic_index, file_path, status)
@@ -478,10 +481,13 @@ class TaskRunner:
     async def _download_problem_image(
         self, task_id: str, page: MangaPicPage, file_path: Path
     ) -> None:
-        data = await downloader.get_bytes(page.pic_url, referer=page.page_url)
+        data = await smart_fetch_bytes(page.pic_url, referer=page.page_url)
         await self._ensure_runnable(task_id)
         if not is_valid_image(data):
-            raise RuntimeError("响应不是有效图片")
+            raise RuntimeError(
+                "图片下载失败（HTTP 和浏览器均无法获取有效图片，"
+                "可能被 Cloudflare 拦截或源文件损坏）"
+            )
         file_path.parent.mkdir(parents=True, exist_ok=True)
         await asyncio.to_thread(file_path.write_bytes, data)
 
@@ -674,11 +680,20 @@ class TaskRunner:
     async def _broadcast(self, task: dict) -> None:
         from backend.app.api.ws import manager
 
+        manga_id = task["manga_id"]
+        async with SessionLocal() as session:
+            manga = await MangaRepository(session).get_info(manga_id)
+        if manga:
+            task["title"] = manga.title
+            task["cover_url"] = manga.cover_url
+
         await manager.broadcast(
             {
                 "type": "task_progress",
                 "task_id": task["task_id"],
-                "manga_id": task["manga_id"],
+                "manga_id": manga_id,
+                "title": task.get("title", ""),
+                "cover_url": task.get("cover_url", ""),
                 "status": task["status"],
                 "stage": task["stage"],
                 "current": task["progress_current"],

@@ -59,7 +59,14 @@ class TaskService:
         async with SessionLocal() as session:
             repo = TaskRepository(session)
             task = await repo.get(task_id)
-            return task_to_dict(task) if task else None
+            if task is None:
+                return None
+            result = task_to_dict(task)
+            manga = await MangaRepository(session).get_info(task.manga_id)
+            if manga:
+                result["title"] = manga.title
+                result["cover_url"] = manga.cover_url
+            return result
 
     async def create(self, payload: TaskCreateRequest) -> dict:
         status = "queued" if payload.start_immediately else "pending"
@@ -69,9 +76,9 @@ class TaskService:
             if existing:
                 result = task_to_dict(existing)
                 result["dedupe_reason"] = "already_active"
-                return result
+                return await self._enrich(session, result)
             task = await repo.create(payload.manga_id, payload.source, status)
-            return task_to_dict(task)
+            return await self._enrich(session, task_to_dict(task))
 
     async def create_batch(self, payload: BatchTaskCreateRequest) -> dict:
         created = []
@@ -97,7 +104,7 @@ class TaskService:
                     )
                     continue
                 task = await repo.create(item.manga_id, payload.source, status)
-                created.append(task_to_dict(task))
+                created.append(await self._enrich(session, task_to_dict(task)))
         return {"created": created, "skipped": skipped}
 
     async def create_from_extension(self, payload: ExtensionSubmitRequest) -> dict:
@@ -125,7 +132,8 @@ class TaskService:
             repo = TaskRepository(session)
             task = await self._require(repo, task_id)
             self._validate_transition(task.id, task.status, status)
-            return task_to_dict(await repo.set_status(task, status))
+            result = task_to_dict(await repo.set_status(task, status))
+            return await self._enrich(session, result)
 
     async def retry(self, task_id: str, scope: str) -> dict:
         async with SessionLocal() as session:
@@ -133,7 +141,8 @@ class TaskService:
             task = await self._require(repo, task_id)
             if task.status not in RETRYABLE_STATUSES:
                 raise InvalidTaskTransition(task.id, task.status, "queued")
-            return task_to_dict(await repo.retry(task, scope))
+            result = task_to_dict(await repo.retry(task, scope))
+            return await self._enrich(session, result)
 
     async def item_status(self, manga_id: str) -> dict:
         async with SessionLocal() as session:
@@ -142,6 +151,13 @@ class TaskService:
             if task:
                 return {"manga_id": manga_id, "status": task.status, "task_id": task.id}
             return {"manga_id": manga_id, "status": "ready", "task_id": None}
+
+    async def _enrich(self, session, result: dict) -> dict:
+        manga = await MangaRepository(session).get_info(result["manga_id"])
+        if manga:
+            result["title"] = manga.title
+            result["cover_url"] = manga.cover_url
+        return result
 
     async def _require(self, repo: TaskRepository, task_id: str):
         task = await repo.get(task_id)

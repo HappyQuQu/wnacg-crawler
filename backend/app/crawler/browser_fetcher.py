@@ -18,6 +18,10 @@ _BROWSER_UA = (
 )
 
 
+def _default_state_path() -> Path:
+    return Path(get_settings().download_path) / ".browser_state.json"
+
+
 class BrowserManager:
     def __init__(self) -> None:
         self._pw: Playwright | None = None
@@ -53,8 +57,8 @@ class BrowserManager:
                 "locale": "zh-CN",
                 "extra_http_headers": {"Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8"},
             }
-            state_path = settings.browser_state_path
-            if state_path and Path(state_path).exists():
+            state_path = settings.browser_state_path or str(_default_state_path())
+            if Path(state_path).exists():
                 context_opts["storage_state"] = state_path
 
             context = await browser.new_context(**context_opts)
@@ -85,6 +89,7 @@ class BrowserManager:
                     await self._save_failure_debug(page, url, "browser_cloudflare")
                 raise RuntimeError(f"Browser still blocked by Cloudflare: {url}")
 
+            await self._save_cookies(context)
             return html
         except Exception:
             if settings.debug_save_on_fail:
@@ -104,6 +109,73 @@ class BrowserManager:
                     await context.close()
                 except Exception:
                     pass
+
+    async def fetch_bytes(self, url: str, referer: str | None = None) -> bytes:
+        browser = await self._ensure_started()
+        settings = get_settings()
+        context: BrowserContext | None = None
+        try:
+            context_opts: dict = {
+                "user_agent": _BROWSER_UA,
+                "locale": "zh-CN",
+                "extra_http_headers": {"Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8"},
+            }
+            state_path = settings.browser_state_path or str(_default_state_path())
+            if Path(state_path).exists():
+                context_opts["storage_state"] = state_path
+
+            context = await browser.new_context(**context_opts)
+            page = await context.new_page()
+
+            if settings.enable_stealth:
+                try:
+                    from playwright_stealth import stealth_async
+
+                    await stealth_async(page)
+                except Exception:
+                    pass
+
+            if referer:
+                try:
+                    await page.goto(referer, wait_until="domcontentloaded", timeout=15000)
+                except Exception:
+                    logger.debug("referer navigation failed: {}", referer)
+
+            try:
+                resp = await page.request.get(url, timeout=60000)
+            except Exception as exc:
+                raise RuntimeError(f"Browser image fetch failed: {url}") from exc
+
+            if resp.status >= 400:
+                raise RuntimeError(
+                    f"Browser image fetch HTTP {resp.status}: {url}"
+                )
+
+            await self._save_cookies(context)
+            return await resp.body()
+        finally:
+            if page:
+                try:
+                    await page.close()
+                except Exception:
+                    pass
+            if context:
+                try:
+                    await context.close()
+                except Exception:
+                    pass
+
+    async def _save_cookies(self, context: BrowserContext) -> None:
+        try:
+            state_path = _default_state_path()
+            state_path.parent.mkdir(parents=True, exist_ok=True)
+            state = await context.storage_state()
+            state_path.write_text(
+                json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            logger.debug("Browser cookies saved to {}", state_path)
+        except Exception as exc:
+            logger.debug("Failed to save browser cookies: {}", exc)
 
     async def _save_failure_debug(self, page, url: str, tag: str) -> None:
         try:

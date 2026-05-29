@@ -28,16 +28,45 @@ class MangaParser:
         if nums:
             page_count = max(nums)
 
-        cover_url = ""
+        cover_url = self._extract_cover(soup)
+        return {"id": manga_id, "title": title, "page_count": page_count, "cover_url": cover_url}
+
+    def _extract_cover(self, soup: BeautifulSoup) -> str:
+        # Priority 1: Look for cover in .uwthumb container (WNACG specific)
+        uwthumb = soup.select_one(".uwthumb")
+        if uwthumb:
+            img = uwthumb.find("img", src=True)
+            if img:
+                return self._normalize_img_src(str(img["src"]))
+
+        # Priority 2: Look for cover in other common containers
+        for container_selector in [".manga-info", ".book-info", ".comic-info", "#manga-info"]:
+            container = soup.select_one(container_selector)
+            if container:
+                img = container.find("img", src=True)
+                if img:
+                    return self._normalize_img_src(str(img["src"]))
+
+        # Priority 3: Look for first image with qy0.ru domain (known CDN)
         for img in soup.find_all("img", src=True):
             src = str(img["src"])
-            if "qy0.ru" in src or "upaiyun" in src or "img.wnacg" in src:
-                if not src.startswith("http"):
-                    src = f"https:{src}" if src.startswith("//") else src
-                cover_url = src
-                break
+            if "qy0.ru" in src:
+                return self._normalize_img_src(src)
 
-        return {"id": manga_id, "title": title, "page_count": page_count, "cover_url": cover_url}
+        return ""
+
+    def _normalize_img_src(self, src: str) -> str:
+        if not src:
+            return ""
+        # Remove multiple leading slashes (e.g., "////t4.qy0.ru/..." -> "//t4.qy0.ru/...")
+        while src.startswith("////"):
+            src = src[1:]
+        if src.startswith("//"):
+            return f"https:{src}"
+        if src.startswith("/"):
+            # Relative URL - would need base URL to resolve
+            return src
+        return src
 
     def parse_pic_page_list(self, html: str, manga_id: str, main_url: str) -> list[PicPageItem]:
         soup = BeautifulSoup(html, "html.parser")

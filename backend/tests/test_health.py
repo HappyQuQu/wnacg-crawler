@@ -82,7 +82,7 @@ def test_library_retry_failed_files_downloads_problem_images(monkeypatch):
         assert referer == "https://example.test/repair-page.html"
         return b"\xff\xd8\xff" + b"1" * (16 * 1024)
 
-    monkeypatch.setattr(runner_module.downloader, "get_bytes", fake_get_bytes)
+    monkeypatch.setattr(runner_module, "smart_fetch_bytes", fake_get_bytes)
 
     client = TestClient(app)
     retry_response = client.post(f"/api/library/{manga_id}/retry-failed")
@@ -115,7 +115,7 @@ def test_library_retry_failed_files_re_resolves_missing_pic_url(monkeypatch):
         return b"\xff\xd8\xff" + b"2" * (16 * 1024)
 
     monkeypatch.setattr(runner_module, "smart_fetch", fake_smart_fetch)
-    monkeypatch.setattr(runner_module.downloader, "get_bytes", fake_get_bytes)
+    monkeypatch.setattr(runner_module, "smart_fetch_bytes", fake_get_bytes)
 
     client = TestClient(app)
     retry_response = client.post(f"/api/library/{manga_id}/retry-failed")
@@ -215,7 +215,7 @@ def test_download_images_uses_parallel_workers(monkeypatch):
         active -= 1
         return b"\xff\xd8\xff" + url.encode() + b"3" * (16 * 1024)
 
-    monkeypatch.setattr(runner_module.downloader, "get_bytes", fake_get_bytes)
+    monkeypatch.setattr(runner_module, "smart_fetch_bytes", fake_get_bytes)
 
     valid_count = asyncio.run(runner_module.task_runner._download_images(task_id, manga_id))
 

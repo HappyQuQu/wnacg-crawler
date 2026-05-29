@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && sed -i '' '/^export {};$/d' dist/content.js",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {

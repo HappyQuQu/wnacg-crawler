@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     proxy: ProxySettings = ProxySettings()
 
     # Playwright / anti-403
-    fetch_mode: str = Field(default="auto", pattern="^(http|browser|auto|full)$")
+    fetch_mode: str = Field(default="auto", pattern="^(http|browser|auto)$")
     enable_browser: bool = True
     browser_headless: bool = True
     browser_state_path: str = ""
@@ -49,7 +49,7 @@ class Settings(BaseSettings):
     crawler_max_delay: float = Field(default=5.0, ge=0)
     crawler_max_retry: int = Field(default=2, ge=0, le=10)
     crawler_403_backoff: float = Field(default=30.0, ge=0)
-    enable_stealth: bool = False
+    enable_stealth: bool = True
 
     model_config = SettingsConfigDict(
         env_prefix="WNACG_",

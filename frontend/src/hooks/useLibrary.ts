@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LibraryItem, LibrarySortKey, LibraryViewMode } from "../types";
 import { fetchLibrary, fetchLibraryDetail, verifyLibraryApi, zipLibraryApi, retryFailedLibraryApi } from "../api";
 import { isProblemFile } from "../utils";
@@ -92,13 +92,17 @@ export function useLibrary() {
     unzipped: libraryItems.filter((i) => !i.zip_exists).length,
   }), [libraryItems]);
 
+  const prevItemsRef = useRef<LibraryItem[]>([]);
   useEffect(() => {
+    const itemsChanged = prevItemsRef.current !== libraryItems;
+    prevItemsRef.current = libraryItems;
+
     if (libraryItems.length === 0) {
       setSelectedLibraryId(null);
       setSelectedLibraryItem(null);
       return;
     }
-    if (!selectedLibraryId || !libraryItems.some((i) => i.manga_id === selectedLibraryId)) {
+    if (itemsChanged && (!selectedLibraryId || !libraryItems.some((i) => i.manga_id === selectedLibraryId))) {
       setSelectedLibraryId(libraryItems[0].manga_id);
     }
   }, [libraryItems, selectedLibraryId]);

@@ -9,15 +9,19 @@ from pathlib import Path
 from loguru import logger
 
 from backend.app.core.config import get_settings
-from backend.app.crawler.block_detector import is_cloudflare_challenge, is_blocked
+from backend.app.crawler.block_detector import is_blocked
 from backend.app.crawler.browser_fetcher import browser_manager
-from backend.app.crawler.downloader import BlockedByCloudflareError, Downloader
+from backend.app.crawler.downloader import BlockedByCloudflareError, downloader
 
-_fetcher = Downloader()
-
-_domain_last_request: dict[str, float] = {}
-_domain_lock = asyncio.Lock()
+_domain_locks: dict[str, asyncio.Lock] = {}
 _blocked_until: dict[str, float] = {}
+_block_counts: dict[str, int] = {}
+
+
+def _get_domain_lock(domain: str) -> asyncio.Lock:
+    if domain not in _domain_locks:
+        _domain_locks[domain] = asyncio.Lock()
+    return _domain_locks[domain]
 
 
 async def polite_delay(domain: str) -> None:
@@ -35,17 +39,28 @@ async def polite_delay(domain: str) -> None:
         logger.info("Domain cooldown active for {}, waiting {:.1f}s", domain, extra)
 
     delay = random.uniform(base_min, base_max) + extra
-    async with _domain_lock:
+    lock = _get_domain_lock(domain)
+    async with lock:
         await asyncio.sleep(delay)
 
 
 def _mark_blocked(domain: str) -> None:
     settings = get_settings()
-    backoff = settings.crawler_403_backoff
-    if backoff <= 0:
+    base_backoff = settings.crawler_403_backoff
+    if base_backoff <= 0:
         return
+    count = _block_counts.get(domain, 0) + 1
+    _block_counts[domain] = count
+    backoff = min(base_backoff * (2 ** (count - 1)), 600.0)
     _blocked_until[domain] = asyncio.get_event_loop().time() + backoff
-    logger.warning("Marked domain {} as blocked for {}s", domain, backoff)
+    logger.warning(
+        "Marked domain {} as blocked for {:.0f}s (consecutive block #{})",
+        domain, backoff, count,
+    )
+
+
+def _reset_block_count(domain: str) -> None:
+    _block_counts.pop(domain, None)
 
 
 def _extract_domain(url: str) -> str:
@@ -66,12 +81,13 @@ async def smart_fetch(url: str, referer: str | None = None) -> str:
 
     if mode == "http":
         await polite_delay(domain)
-        return await _fetcher.get_text(url, referer=referer)
+        return await downloader.get_text(url, referer=referer)
 
-    # mode == "auto" or "full": HTTP first, fallback to browser on Cloudflare
+    # mode == "auto": HTTP first, fallback to browser on Cloudflare
     await polite_delay(domain)
     try:
-        html = await _fetcher.get_text(url, referer=referer)
+        html = await downloader.get_text(url, referer=referer)
+        _reset_block_count(domain)
         return html
     except BlockedByCloudflareError:
         logger.info("Cloudflare detected, switching to browser: {}", url)
@@ -80,13 +96,58 @@ async def smart_fetch(url: str, referer: str | None = None) -> str:
         logger.info("HTTP failed ({}), switching to browser: {}", type(exc).__name__, url)
         _mark_blocked(domain)
 
-    # Browser fallback
-    await polite_delay(domain)
-    html = await browser_manager.fetch(url, referer=referer)
-    if is_blocked(html=html):
-        _save_debug(url, 0, html, "browser_blocked")
-        raise RuntimeError(f"Browser fetch also blocked: {url}")
-    return html
+    # Browser fallback with retry
+    max_browser_attempts = max(settings.crawler_max_retry, 1)
+    for attempt in range(max_browser_attempts):
+        await polite_delay(domain)
+        html = await browser_manager.fetch(url, referer=referer)
+        if not is_blocked(html=html):
+            return html
+        logger.warning(
+            "Browser attempt {}/{} blocked: {}",
+            attempt + 1, max_browser_attempts, url,
+        )
+    _save_debug(url, 0, html, "browser_blocked")
+    raise RuntimeError(
+        f"Browser fetch blocked after {max_browser_attempts} attempts: {url}"
+    )
+
+
+async def smart_fetch_bytes(url: str, referer: str | None = None) -> bytes:
+    settings = get_settings()
+    if settings.fetch_mode == "browser":
+        return await browser_manager.fetch_bytes(url, referer=referer)
+
+    domain = _extract_domain(url)
+    try:
+        data = await downloader.get_bytes(url, referer=referer)
+        _reset_block_count(domain)
+        return data
+    except BlockedByCloudflareError:
+        logger.info("CF on image, switching to browser: {}", url)
+        _mark_blocked(domain)
+    except Exception as exc:
+        logger.info(
+            "Image HTTP failed ({}), switching to browser: {}",
+            type(exc).__name__, url,
+        )
+        _mark_blocked(domain)
+
+    # Browser fallback with retry
+    max_browser_attempts = max(settings.crawler_max_retry, 1)
+    for attempt in range(max_browser_attempts):
+        try:
+            return await browser_manager.fetch_bytes(url, referer=referer)
+        except Exception as exc:
+            logger.warning(
+                "Browser image attempt {}/{} failed: {} - {}",
+                attempt + 1, max_browser_attempts, url, exc,
+            )
+            if attempt < max_browser_attempts - 1:
+                await polite_delay(domain)
+    raise RuntimeError(
+        f"Browser image fetch failed after {max_browser_attempts} attempts: {url}"
+    )
 
 
 def _save_debug(url: str, status_code: int, body: str, tag: str) -> None:

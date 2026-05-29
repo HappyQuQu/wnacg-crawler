@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import {
   AlertTriangle,
+  BookOpen,
+  ExternalLink,
   LayoutGrid,
   List,
   Pause,
@@ -44,6 +46,7 @@ export function QueuePage({
   selectedTask,
   logItems,
   queueCounts,
+  noImageMode,
   searchQuery,
   loading,
   initialLoading,
@@ -57,6 +60,7 @@ export function QueuePage({
   selectedTask: Task | null;
   logItems: LogItem[];
   queueCounts: Record<string, number>;
+  noImageMode: boolean;
   searchQuery: string;
   loading: boolean;
   initialLoading: boolean;
@@ -128,9 +132,9 @@ export function QueuePage({
           initialLoading ? (
             <div style={{ padding: "14px 18px" }}><SkeletonTable rows={6} cols={5} /></div>
           ) : viewMode === "table" ? (
-            <TableView tasks={filteredTasks} selectedTask={selectedTask} loading={loading} onTaskSelect={onTaskSelect} onControl={onControl} onRetry={onRetry} />
+            <TableView tasks={filteredTasks} selectedTask={selectedTask} loading={loading} noImageMode={noImageMode} onTaskSelect={onTaskSelect} onControl={onControl} onRetry={onRetry} />
           ) : (
-            <CardView tasks={filteredTasks} selectedTask={selectedTask} loading={loading} onTaskSelect={onTaskSelect} onControl={onControl} onRetry={onRetry} />
+            <CardView tasks={filteredTasks} selectedTask={selectedTask} loading={loading} noImageMode={noImageMode} onTaskSelect={onTaskSelect} onControl={onControl} onRetry={onRetry} />
           )
         ) : (
           <div className="table-wrap">
@@ -161,17 +165,18 @@ export function QueuePage({
         )}
       </section>
 
-      {!isLogsTab && <TaskDetailPanel task={selectedTask} logItems={logItems} loading={loading} onControl={onControl} onRetry={onRetry} />}
+      {!isLogsTab && <TaskDetailPanel task={selectedTask} logItems={logItems} loading={loading} noImageMode={noImageMode} onControl={onControl} onRetry={onRetry} />}
     </div>
   );
 }
 
 function TableView({
-  tasks, selectedTask, loading, onTaskSelect, onControl, onRetry,
+  tasks, selectedTask, loading, noImageMode, onTaskSelect, onControl, onRetry,
 }: {
   tasks: Task[];
   selectedTask: Task | null;
   loading: boolean;
+  noImageMode: boolean;
   onTaskSelect: (id: string) => void;
   onControl: (task: Task, action: "pause" | "resume" | "cancel") => Promise<void>;
   onRetry: (task: Task) => Promise<void>;
@@ -187,7 +192,7 @@ function TableView({
             <tr key={task.task_id} className={task.task_id === selectedTask?.task_id ? "selected-row" : ""} onClick={() => onTaskSelect(task.task_id)}>
               <td>
                 <div className="row-title">
-                  {task.cover_url ? <img className="row-thumb" src={task.cover_url} alt="" /> : <div className="row-thumb-placeholder" />}
+                  {task.cover_url ? <img className={`row-thumb ${noImageMode ? "no-image-blur" : ""}`} src={task.cover_url} alt="" /> : <div className="row-thumb-placeholder" />}
                   <div className="row-text">
                     <span className="row-name">{taskDisplayName(task)}</span>
                     <span className="mono row-id-small">{task.manga_id}</span>
@@ -207,6 +212,7 @@ function TableView({
                   <button className="icon-button" title="暂停" onClick={(e) => { e.stopPropagation(); void onControl(task, "pause"); }} disabled={!canPause(task) || loading}><Pause size={14} /></button>
                   <button className="icon-button" title="继续" onClick={(e) => { e.stopPropagation(); void onControl(task, "resume"); }} disabled={!canResume(task) || loading}><Play size={14} /></button>
                   <button className="icon-button" title="重试" onClick={(e) => { e.stopPropagation(); void onRetry(task); }} disabled={!canRetry(task) || loading}><RotateCcw size={14} /></button>
+                  <button className="icon-button" title="打开原始链接" onClick={(e) => { e.stopPropagation(); window.open(`https://www.wnacg.com/photos-index-aid-${task.manga_id}.html`, "_blank"); }}><ExternalLink size={14} /></button>
                 </div>
               </td>
             </tr>
@@ -219,11 +225,12 @@ function TableView({
 }
 
 function CardView({
-  tasks, selectedTask, loading, onTaskSelect, onControl, onRetry,
+  tasks, selectedTask, loading, noImageMode, onTaskSelect, onControl, onRetry,
 }: {
   tasks: Task[];
   selectedTask: Task | null;
   loading: boolean;
+  noImageMode: boolean;
   onTaskSelect: (id: string) => void;
   onControl: (task: Task, action: "pause" | "resume" | "cancel") => Promise<void>;
   onRetry: (task: Task) => Promise<void>;
@@ -237,31 +244,36 @@ function CardView({
         const pct = progressPercent(task.progress_current, task.progress_total);
         const isSelected = task.task_id === selectedTask?.task_id;
         return (
-          <div key={task.task_id} className={`task-card ${isSelected ? "selected" : ""}`} onClick={() => onTaskSelect(task.task_id)}>
-            {task.cover_url && <img className="task-card-cover" src={task.cover_url} alt="" />}
-            <div className="task-card-header">
-              <span className="mono task-card-id">{task.manga_id}</span>
-              <StatusBadge status={task.status} />
+          <article key={task.task_id} className={`task-card ${isSelected ? "selected" : ""}`} role="button" tabIndex={0} onClick={() => onTaskSelect(task.task_id)}>
+            <div className={`task-card-cover ${noImageMode ? "no-image-blur" : ""}`}>
+              {task.cover_url ? <img src={task.cover_url} alt="" /> : <BookOpen size={24} />}
             </div>
-            <h3 className="task-card-title">{taskDisplayName(task)}</h3>
-            <div className="task-card-progress">
-              <ProgressBar value={task.progress_total > 0 ? task.progress_current / task.progress_total : 0} />
-              <span className="task-card-pct">{pct}%</span>
+            <div className="task-card-body">
+              <div className="task-card-header">
+                <span className="mono task-card-id">{task.manga_id}</span>
+                <StatusBadge status={task.status} />
+              </div>
+              <h3 className="task-card-title">{taskDisplayName(task)}</h3>
+              <div className="task-card-progress">
+                <ProgressBar value={task.progress_total > 0 ? task.progress_current / task.progress_total : 0} />
+                <span className="task-card-pct">{pct}%</span>
+              </div>
+              <div className="task-card-meta">
+                <span>{stageLabel(task.stage)}</span>
+                {task.progress_total > 0 && <span>{task.progress_current}/{task.progress_total} 张</span>}
+                <span>{formatTime(task.updated_at)}</span>
+              </div>
+              {task.last_error && (
+                <div className="task-card-error"><AlertTriangle size={12} /><span>{task.last_error}</span></div>
+              )}
+              <div className="task-card-actions">
+                <button className="icon-button" title="暂停" onClick={(e) => { e.stopPropagation(); void onControl(task, "pause"); }} disabled={!canPause(task) || loading}><Pause size={14} /></button>
+                <button className="icon-button" title="继续" onClick={(e) => { e.stopPropagation(); void onControl(task, "resume"); }} disabled={!canResume(task) || loading}><Play size={14} /></button>
+                <button className="icon-button" title="重试" onClick={(e) => { e.stopPropagation(); void onRetry(task); }} disabled={!canRetry(task) || loading}><RotateCcw size={14} /></button>
+                <button className="icon-button" title="打开原始链接" onClick={(e) => { e.stopPropagation(); window.open(`https://www.wnacg.com/photos-index-aid-${task.manga_id}.html`, "_blank"); }}><ExternalLink size={14} /></button>
+              </div>
             </div>
-            <div className="task-card-meta">
-              <span>{stageLabel(task.stage)}</span>
-              {task.progress_total > 0 && <span>{task.progress_current}/{task.progress_total} 张</span>}
-              <span>{formatTime(task.updated_at)}</span>
-            </div>
-            {task.last_error && (
-              <div className="task-card-error"><AlertTriangle size={12} /><span>{task.last_error}</span></div>
-            )}
-            <div className="task-card-actions">
-              <button className="icon-button" title="暂停" onClick={(e) => { e.stopPropagation(); void onControl(task, "pause"); }} disabled={!canPause(task) || loading}><Pause size={14} /></button>
-              <button className="icon-button" title="继续" onClick={(e) => { e.stopPropagation(); void onControl(task, "resume"); }} disabled={!canResume(task) || loading}><Play size={14} /></button>
-              <button className="icon-button" title="重试" onClick={(e) => { e.stopPropagation(); void onRetry(task); }} disabled={!canRetry(task) || loading}><RotateCcw size={14} /></button>
-            </div>
-          </div>
+          </article>
         );
       })}
     </div>
@@ -269,11 +281,12 @@ function CardView({
 }
 
 function TaskDetailPanel({
-  task, logItems, loading, onControl, onRetry,
+  task, logItems, loading, noImageMode, onControl, onRetry,
 }: {
   task: Task | null;
   logItems: LogItem[];
   loading: boolean;
+  noImageMode: boolean;
   onControl: (task: Task, action: "pause" | "resume" | "cancel") => Promise<void>;
   onRetry: (task: Task) => Promise<void>;
 }) {
@@ -295,8 +308,10 @@ function TaskDetailPanel({
       </div>
 
       {task?.cover_url && (
-        <div className="detail-cover">
-          <img src={task.cover_url} alt={task.title || task.manga_id} />
+        <div className="detail-cover-wrap">
+          <div className={`detail-cover ${noImageMode ? "no-image-blur" : ""}`}>
+            <img src={task.cover_url} alt={task.title || task.manga_id} />
+          </div>
         </div>
       )}
 
@@ -330,6 +345,7 @@ function TaskDetailPanel({
         <button className="button secondary" disabled={!task || !canResume(task) || loading} onClick={() => task && void onControl(task, "resume")}><Play size={15} />继续</button>
         <button className="button secondary danger-button" disabled={!task || !canCancel(task) || loading} onClick={() => task && void onControl(task, "cancel")}><XCircle size={15} />取消</button>
         <button className="button primary" disabled={!task || !canRetry(task) || loading} onClick={() => task && void onRetry(task)}><RotateCcw size={15} />重试</button>
+        {task && <button className="button secondary" onClick={() => window.open(`https://www.wnacg.com/photos-index-aid-${task.manga_id}.html`, "_blank")}><ExternalLink size={15} />原始链接</button>}
       </div>
 
       {taskLogs.length > 0 && (

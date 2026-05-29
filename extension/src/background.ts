@@ -26,6 +26,18 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === "GET_KNOWN_IDS") {
+    Promise.all([
+      apiFetch<{ items: { manga_id: string }[] }>("/api/tasks").catch(() => ({ items: [] })),
+      apiFetch<{ items: { manga_id: string }[] }>("/api/library").catch(() => ({ items: [] })),
+    ]).then(([tasks, library]) => {
+      const taskIds = (tasks.items ?? []).map((t) => t.manga_id);
+      const libraryIds = (library.items ?? []).map((t) => t.manga_id);
+      sendResponse({ taskIds, libraryIds });
+    }).catch(() => sendResponse({ taskIds: [], libraryIds: [] }));
+    return true;
+  }
+
   if (message?.type !== "SUBMIT_PAGE") {
     return false;
   }

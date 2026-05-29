@@ -192,8 +192,17 @@ function App() {
       onConfirm: () => {
         setConfirmState((s) => ({ ...s, open: false }));
         void withLoading(async () => {
-          await config.generateToken();
-          showToast("已生成扩展 Token", "success");
+          const data = await config.generateToken();
+          if (data?.extension_token) {
+            try {
+              await navigator.clipboard.writeText(data.extension_token);
+              showToast("已生成扩展 Token 并复制到剪贴板", "success");
+            } catch {
+              showToast("已生成扩展 Token，请手动复制", "success");
+            }
+          } else {
+            showToast("已生成扩展 Token", "success");
+          }
         });
       },
     });

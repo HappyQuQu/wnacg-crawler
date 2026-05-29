@@ -9,106 +9,328 @@
         color-scheme: light;
         font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
         color: #1d1d1f;
+        --green: #1a7f37;
+        --green-bg: rgba(52, 199, 89, 0.12);
+        --blue: #007aff;
+        --orange: #bf5700;
+        --orange-bg: rgba(255, 159, 10, 0.12);
+        --red: #ff3b30;
+        --red-bg: rgba(255, 59, 48, 0.12);
+        --muted: #6e6e73;
+        --border: rgba(60, 60, 67, 0.14);
       }
 
       body {
-        width: 320px;
+        width: 360px;
         margin: 0;
         background: #f5f5f7;
+        font-size: 13px;
       }
 
       main {
-        padding: 14px;
-        display: grid;
-        gap: 12px;
-      }
-
-      h1 {
-        margin: 0;
-        font-size: 16px;
-      }
-
-      p {
-        margin: 4px 0 0;
-        color: #6e6e73;
-        font-size: 12px;
-      }
-
-      .card {
-        border: 1px solid rgba(60, 60, 67, 0.14);
-        border-radius: 12px;
-        background: #fff;
         padding: 12px;
         display: grid;
         gap: 10px;
       }
 
-      .row {
+      .card {
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: #fff;
+        padding: 12px;
+        display: grid;
+        gap: 8px;
+      }
+
+      .card-header {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 10px;
       }
 
-      .status {
+      .card-title {
+        font-size: 14px;
+        font-weight: 700;
+        margin: 0;
+      }
+
+      .card-sub {
+        font-size: 11px;
+        color: var(--muted);
+        margin: 0;
+      }
+
+      .badge {
+        display: inline-block;
+        padding: 2px 8px;
         border-radius: 999px;
-        padding: 4px 9px;
-        color: #1a7f37;
-        background: rgba(52, 199, 89, 0.12);
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 700;
       }
+      .badge-green  { color: var(--green); background: var(--green-bg); }
+      .badge-red    { color: var(--red);   background: var(--red-bg); }
+      .badge-orange { color: var(--orange); background: var(--orange-bg); }
+      .badge-blue   { color: var(--blue);  background: rgba(0,122,255,0.12); }
 
+      .stats-row {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+      }
+      .stat-item {
+        text-align: center;
+        padding: 6px 0;
+        border-radius: 8px;
+        background: #f5f5f7;
+      }
+      .stat-num {
+        font-size: 18px;
+        font-weight: 700;
+        display: block;
+      }
+      .stat-label {
+        font-size: 10px;
+        color: var(--muted);
+      }
+
+      /* Task list */
+      .task-list {
+        display: grid;
+        gap: 6px;
+        max-height: 200px;
+        overflow-y: auto;
+      }
+      .task-item {
+        display: grid;
+        gap: 4px;
+        padding: 8px;
+        border-radius: 8px;
+        background: #f9f9fb;
+        border: 1px solid var(--border);
+      }
+      .task-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 6px;
+      }
+      .task-name {
+        font-size: 12px;
+        font-weight: 600;
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .task-meta {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .progress-bar {
+        height: 4px;
+        border-radius: 2px;
+        background: #e5e5ea;
+        overflow: hidden;
+      }
+      .progress-fill {
+        height: 100%;
+        border-radius: 2px;
+        background: var(--blue);
+        transition: width 0.3s;
+      }
+      .progress-fill.done { background: var(--green); }
+
+      .empty-text {
+        text-align: center;
+        color: var(--muted);
+        font-size: 12px;
+        padding: 12px 0;
+      }
+
+      /* Buttons */
       button {
-        min-height: 36px;
+        min-height: 34px;
         border: 0;
-        border-radius: 10px;
+        border-radius: 8px;
         padding: 0 12px;
         cursor: pointer;
         font: inherit;
         font-weight: 700;
+        font-size: 13px;
       }
-
-      .primary {
+      .btn-primary {
         color: #fff;
-        background: #007aff;
+        background: var(--blue);
       }
-
-      .secondary {
+      .btn-secondary {
         color: #1d1d1f;
         background: #fff;
-        border: 1px solid rgba(60, 60, 67, 0.14);
+        border: 1px solid var(--border);
+      }
+      .btn-small {
+        min-height: 28px;
+        padding: 0 8px;
+        font-size: 11px;
+        border-radius: 6px;
+      }
+      .btn-row {
+        display: flex;
+        gap: 6px;
       }
 
-      .actions {
-        display: grid;
-        gap: 8px;
+      /* Toggle link */
+      .toggle-link {
+        background: none;
+        border: none;
+        color: var(--muted);
+        font-size: 11px;
+        cursor: pointer;
+        padding: 0;
+        min-height: auto;
       }
+      .toggle-link:hover { color: var(--blue); }
+
+      /* Settings */
+      .settings-panel { display: none; }
+      .settings-panel.open { display: grid; gap: 8px; }
+
+      .field {
+        display: grid;
+        gap: 3px;
+      }
+      .field-label {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--muted);
+      }
+      .field-input {
+        height: 32px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 0 8px;
+        font-size: 12px;
+        font-family: monospace;
+      }
+      .field-row {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+      .field-row .field-input { flex: 1; min-width: 0; }
+      .icon-btn {
+        min-height: 32px;
+        width: 32px;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 8px;
+        font-size: 14px;
+      }
+
+      .msg {
+        font-size: 11px;
+        text-align: center;
+        margin: 0;
+      }
+      .msg-ok { color: var(--green); }
+      .msg-err { color: var(--red); }
+
+      /* Scrollbar */
+      .task-list::-webkit-scrollbar { width: 4px; }
+      .task-list::-webkit-scrollbar-thumb { background: #c7c7cc; border-radius: 2px; }
     </style>
   </head>
   <body>
     <main>
+      <!-- Status -->
       <section class="card">
-        <div class="row">
+        <div class="card-header">
           <div>
-            <h1>Downloader</h1>
-            <p id="server">检测后台连接</p>
+            <p class="card-title">WNACG Downloader</p>
+            <p class="card-sub" id="server-url">检测中…</p>
           </div>
-          <span class="status" id="status">待检测</span>
+          <span class="badge" id="status-badge">待检测</span>
         </div>
       </section>
 
+      <!-- Stats -->
       <section class="card">
-        <div>
-          <h1 id="page-title">当前页面</h1>
-          <p id="page-meta">等待识别</p>
-        </div>
-        <div class="actions">
-          <button class="primary" id="submit">加入队列</button>
-          <button class="secondary" id="open-admin">打开后台</button>
+        <div class="stats-row">
+          <div class="stat-item">
+            <span class="stat-num" id="stat-library">-</span>
+            <span class="stat-label">资料库</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-num" id="stat-active">-</span>
+            <span class="stat-label">进行中</span>
+          </div>
+          <div class="stat-item">
+            <span class="stat-num" id="stat-completed">-</span>
+            <span class="stat-label">已完成</span>
+          </div>
         </div>
       </section>
+
+      <!-- Active tasks -->
+      <section class="card">
+        <div class="card-header">
+          <p class="card-title">下载任务</p>
+          <button class="btn-secondary btn-small" id="refresh-btn">刷新</button>
+        </div>
+        <div class="task-list" id="task-list">
+          <p class="empty-text">加载中…</p>
+        </div>
+      </section>
+
+      <!-- Page actions -->
+      <section class="card" id="page-card" style="display:none">
+        <div>
+          <p class="card-title" id="page-title">当前页面</p>
+          <p class="card-sub" id="page-meta"></p>
+        </div>
+        <div class="btn-row">
+          <button class="btn-primary" id="submit" disabled>加入队列</button>
+          <button class="btn-secondary" id="open-admin">打开后台</button>
+        </div>
+      </section>
+
+      <!-- Settings toggle -->
+      <button class="toggle-link" id="settings-toggle">⚙ 设置</button>
+
+      <!-- Settings panel -->
+      <section class="card settings-panel" id="settings-panel">
+        <p class="card-title" style="font-size:13px">连接配置</p>
+
+        <div class="field">
+          <span class="field-label">后台地址</span>
+          <input class="field-input" id="input-server" value="http://127.0.0.1:8080">
+        </div>
+
+        <div class="field">
+          <span class="field-label">后台页面地址</span>
+          <input class="field-input" id="input-admin" value="http://127.0.0.1:5173">
+        </div>
+
+        <div class="field">
+          <span class="field-label">Extension Token</span>
+          <div class="field-row">
+            <input class="field-input" id="input-token" type="password" placeholder="粘贴 Token">
+            <button class="btn-secondary icon-btn" id="btn-visibility" title="显示/隐藏">👁</button>
+            <button class="btn-secondary icon-btn" id="btn-paste" title="从剪贴板粘贴">📋</button>
+            <button class="btn-secondary icon-btn" id="btn-clear" title="清除 Token">🗑</button>
+          </div>
+        </div>
+
+        <button class="btn-primary" id="btn-save">保存设置</button>
+        <p class="msg" id="settings-msg"></p>
+      </section>
     </main>
+
     <script type="module" src="dist/popup.js"></script>
   </body>
 </html>
