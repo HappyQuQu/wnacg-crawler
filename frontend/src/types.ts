@@ -114,6 +114,19 @@ export type TaskProgressMessage = {
   message: string | null;
 };
 
+export type SystemAlertMessage = {
+  type: "system_alert";
+  alert_type: string;
+  domain: string;
+  block_type: string;
+  message: string;
+  guidance: string;
+  action: "blocked" | "cleared";
+  blocked_domains: string[];
+};
+
+export type WsMessage = TaskProgressMessage | SystemAlertMessage;
+
 export type WsStatus = "connecting" | "connected" | "fallback";
 export type ViewKey = "dashboard" | "tasks" | "library" | "settings";
 export type QueueFilter = "all" | "active" | "failed" | "partial" | "completed";

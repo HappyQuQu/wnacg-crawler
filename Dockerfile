@@ -25,7 +25,7 @@ COPY pyproject.toml README.md ./
 COPY backend ./backend
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir . playwright-stealth
 
 # Install Chromium browser binary (deps already installed above)
 RUN playwright install chromium

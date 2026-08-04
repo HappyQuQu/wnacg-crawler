@@ -50,13 +50,18 @@ class LogService:
         async with SessionLocal() as session:
             log_repo = LogRepository(session)
             tasks = await TaskRepository(session).list_failed_with_errors()
+            if not tasks:
+                return 0
+
+            # Batch check which task_ids already have backfill logs
+            task_ids = {task.id for task in tasks}
+            existing_ids = await log_repo.existing_task_ids_for_event(
+                "legacy_task_failure", task_ids
+            )
+
             created = 0
             for task in tasks:
-                if await log_repo.exists(
-                    event="legacy_task_failure",
-                    manga_id=task.manga_id,
-                    task_id=task.id,
-                ):
+                if task.id in existing_ids:
                     continue
                 await log_repo.create(
                     level="error",

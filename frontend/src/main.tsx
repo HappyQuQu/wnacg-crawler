@@ -25,8 +25,10 @@ import "./styles.css";
 import type { ViewKey, Task, TaskProgressMessage } from "./types";
 import { Sidebar } from "./components/Sidebar";
 import { ToastProvider, useToast } from "./components/Toast";
+import { ErrorBoundary } from "./components/Common";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { AddTaskPanel } from "./components/AddTaskPanel";
+import { BlockAlertBanner } from "./components/BlockAlertBanner";
 import { DashboardPage } from "./pages/DashboardPage";
 import { QueuePage } from "./pages/QueuePage";
 import { LibraryPage } from "./pages/LibraryPage";
@@ -36,6 +38,7 @@ import { useLibrary } from "./hooks/useLibrary";
 import { useLogs } from "./hooks/useLogs";
 import { useConfig } from "./hooks/useConfig";
 import { useWebSocket, useWsTaskProgress, useWsAutoRefresh } from "./hooks/useWebSocket";
+import { useBlockAlerts } from "./hooks/useBlockAlerts";
 
 const viewCopy: Record<ViewKey, string> = {
   dashboard: "概览",
@@ -64,6 +67,7 @@ function App() {
   const logs = useLogs();
   const config = useConfig();
   const wsStatus = useWebSocket();
+  const blockAlerts = useBlockAlerts(showToast);
 
   const refreshAll = useCallback(async () => {
     await Promise.all([tasks.refresh(), library.refresh(), config.refresh(), logs.refresh()]);
@@ -231,6 +235,11 @@ function App() {
           </div>
         </header>
 
+        <BlockAlertBanner
+          alerts={blockAlerts.alerts}
+          onDismiss={blockAlerts.dismissAlert}
+        />
+
         <section className="content">
           {activeView === "dashboard" && (
             <DashboardPage
@@ -329,8 +338,10 @@ function App() {
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <ToastProvider>
-      <App />
-    </ToastProvider>
+    <ErrorBoundary>
+      <ToastProvider>
+        <App />
+      </ToastProvider>
+    </ErrorBoundary>
   </StrictMode>
 );

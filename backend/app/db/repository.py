@@ -174,6 +174,21 @@ class MangaRepository:
         )
         return list(result.scalars().all())
 
+    async def list_pic_pages_for_manga_ids(
+        self, manga_ids: set[str]
+    ) -> dict[str, list[MangaPicPage]]:
+        if not manga_ids:
+            return {}
+        result = await self.session.execute(
+            select(MangaPicPage)
+            .where(MangaPicPage.manga_id.in_(manga_ids))
+            .order_by(MangaPicPage.pic_index)
+        )
+        pages: dict[str, list[MangaPicPage]] = {mid: [] for mid in manga_ids}
+        for page in result.scalars().all():
+            pages[page.manga_id].append(page)
+        return pages
+
 
 class TaskRepository:
     active_statuses = {"pending", "queued", "running", "paused"}
@@ -232,6 +247,22 @@ class TaskRepository:
             .limit(1)
         )
         return result.scalar_one_or_none()
+
+    async def latest_for_manga_ids(self, manga_ids: set[str]) -> dict[str, DownloadTask | None]:
+        """Return the latest task for each manga_id. Uses a subquery for efficiency."""
+        if not manga_ids:
+            return {}
+        # Get all tasks for the manga_ids, ordered by created_at desc
+        result = await self.session.execute(
+            select(DownloadTask)
+            .where(DownloadTask.manga_id.in_(manga_ids))
+            .order_by(desc(DownloadTask.created_at))
+        )
+        tasks: dict[str, DownloadTask | None] = {mid: None for mid in manga_ids}
+        for task in result.scalars().all():
+            if tasks[task.manga_id] is None:
+                tasks[task.manga_id] = task
+        return tasks
 
     async def create(
         self,
@@ -363,6 +394,19 @@ class FileRepository:
         )
         return list(result.scalars().all())
 
+    async def list_for_manga_ids(self, manga_ids: set[str]) -> dict[str, list[DownloadFile]]:
+        if not manga_ids:
+            return {}
+        result = await self.session.execute(
+            select(DownloadFile)
+            .where(DownloadFile.manga_id.in_(manga_ids))
+            .order_by(DownloadFile.pic_index)
+        )
+        files: dict[str, list[DownloadFile]] = {mid: [] for mid in manga_ids}
+        for file in result.scalars().all():
+            files[file.manga_id].append(file)
+        return files
+
     async def count_valid(self, manga_id: str) -> int:
         result = await self.session.execute(
             select(func.count()).select_from(DownloadFile).where(
@@ -426,3 +470,15 @@ class LogRepository:
             stmt = stmt.where(AppLog.task_id == task_id)
         result = await self.session.execute(stmt)
         return int(result.scalar_one()) > 0
+
+    async def existing_task_ids_for_event(self, event: str, task_ids: set[str]) -> set[str]:
+        """Return the set of task_ids that already have a log entry for the given event."""
+        if not task_ids:
+            return set()
+        result = await self.session.execute(
+            select(AppLog.task_id).where(
+                AppLog.event == event,
+                AppLog.task_id.in_(task_ids),
+            )
+        )
+        return {row[0] for row in result.all()}

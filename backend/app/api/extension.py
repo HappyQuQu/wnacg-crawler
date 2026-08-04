@@ -5,7 +5,10 @@ from backend.app.core.schemas import (
     ExtensionSubmitManyRequest,
     ExtensionSubmitRequest,
 )
-from backend.app.core.security import require_extension_token
+from backend.app.core.security import (
+    require_extension_token,
+    require_extension_token_with_rate_limit,
+)
 from backend.app.services.task_runner import task_runner
 from backend.app.services.task_service import task_service
 
@@ -28,7 +31,7 @@ async def extension_status(_: None = Depends(require_extension_token)):
 async def submit_from_extension(
     payload: ExtensionSubmitRequest,
     background_tasks: BackgroundTasks,
-    _: None = Depends(require_extension_token),
+    _: None = Depends(require_extension_token_with_rate_limit),
 ):
     task = await task_service.create_from_extension(payload)
     if task.get("status") == "queued" and "dedupe_reason" not in task:
@@ -40,7 +43,7 @@ async def submit_from_extension(
 async def submit_many_from_extension(
     payload: ExtensionSubmitManyRequest,
     background_tasks: BackgroundTasks,
-    _: None = Depends(require_extension_token),
+    _: None = Depends(require_extension_token_with_rate_limit),
 ):
     result = await task_service.create_many_from_extension(payload)
     task_ids = [task["task_id"] for task in result["created"] if task.get("status") == "queued"]

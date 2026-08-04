@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import random
 from datetime import datetime
 from pathlib import Path
 
@@ -17,9 +18,31 @@ _BROWSER_UA = (
     "Chrome/125.0.0.0 Safari/537.36"
 )
 
+# Realistic viewport sizes to avoid fingerprinting
+_VIEWPORTS = [
+    {"width": 1920, "height": 1080},
+    {"width": 1366, "height": 768},
+    {"width": 1536, "height": 864},
+    {"width": 1440, "height": 900},
+    {"width": 1280, "height": 720},
+]
+
 
 def _default_state_path() -> Path:
     return Path(get_settings().download_path) / ".browser_state.json"
+
+
+def _build_proxy_config(settings) -> dict | None:
+    """Build Playwright proxy config from app settings."""
+    if not settings.proxy.is_proxy:
+        return None
+    proxy_url = f"http://{settings.proxy.address}:{settings.proxy.port}"
+    proxy_cfg: dict = {"server": proxy_url}
+    if settings.proxy.username:
+        proxy_cfg["username"] = settings.proxy.username
+    if settings.proxy.password:
+        proxy_cfg["password"] = settings.proxy.password
+    return proxy_cfg
 
 
 class BrowserManager:
@@ -36,14 +59,22 @@ class BrowserManager:
                 return self._browser
             settings = get_settings()
             self._pw = await async_playwright().start()
-            self._browser = await self._pw.chromium.launch(
-                headless=settings.browser_headless,
-                args=[
+
+            launch_args: dict = {
+                "headless": settings.browser_headless,
+                "args": [
                     "--no-sandbox",
                     "--disable-dev-shm-usage",
                     "--disable-blink-features=AutomationControlled",
+                    "--disable-features=IsolateOrigins,site-per-process",
                 ],
-            )
+            }
+            proxy_cfg = _build_proxy_config(settings)
+            if proxy_cfg:
+                launch_args["proxy"] = proxy_cfg
+                logger.info("Playwright browser using proxy: {}", proxy_cfg["server"])
+
+            self._browser = await self._pw.chromium.launch(**launch_args)
             logger.info("Playwright browser launched (headless={})", settings.browser_headless)
         return self._browser
 
@@ -52,10 +83,18 @@ class BrowserManager:
         settings = get_settings()
         context: BrowserContext | None = None
         try:
+            viewport = random.choice(_VIEWPORTS)
             context_opts: dict = {
                 "user_agent": _BROWSER_UA,
                 "locale": "zh-CN",
-                "extra_http_headers": {"Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8"},
+                "timezone_id": "Asia/Shanghai",
+                "viewport": viewport,
+                "extra_http_headers": {
+                    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+                    "sec-ch-ua": '"Google Chrome";v="125", "Chromium";v="125", "Not.A/Brand";v="24"',
+                    "sec-ch-ua-mobile": "?0",
+                    "sec-ch-ua-platform": '"Windows"',
+                },
             }
             state_path = settings.browser_state_path or str(_default_state_path())
             if Path(state_path).exists():
@@ -66,11 +105,13 @@ class BrowserManager:
 
             if settings.enable_stealth:
                 try:
-                    from playwright_stealth import stealth_async
+                    from playwright_stealth import stealth_async  # type: ignore[import-untyped]
                     await stealth_async(page)
                     logger.debug("Stealth applied for {}", url)
                 except ImportError:
-                    logger.warning("playwright-stealth not installed, skipping stealth")
+                    logger.warning(
+                        "playwright-stealth not installed, skipping stealth"
+                    )
                 except Exception as exc:
                     logger.debug("Stealth failed: {}", exc)
 

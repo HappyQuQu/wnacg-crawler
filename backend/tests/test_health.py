@@ -5,6 +5,9 @@ from fastapi.testclient import TestClient
 
 from backend.app.core.config import get_settings
 from backend.app.core.paths import manga_dir
+from backend.app.crawler.block_detector import is_blocked, is_cloudflare_challenge
+from backend.app.crawler.downloader import image_extension, is_valid_image
+from backend.app.crawler.parser import manga_parser
 from backend.app.db.database import SessionLocal, init_db
 from backend.app.db.repository import FileRepository, MangaRepository, TaskRepository
 from backend.app.main import app
@@ -447,3 +450,209 @@ async def _seed_failed_task(manga_id: str) -> str:
             error="403 Forbidden",
         )
         return failed.id
+
+
+# ── Parser tests ──────────────────────────────────────────────────────────
+
+
+def test_parse_manga_info_extracts_title():
+    html = '<html><body><h2>我的漫画</h2></body></html>'
+    result = manga_parser.parse_manga_info(html, "12345")
+    assert result["title"] == "我的漫画"
+    assert result["id"] == "12345"
+
+
+def test_parse_manga_info_extracts_page_count():
+    html = """
+    <html><body><h2>Test</h2>
+    <a href="photos-index-page-1-aid-100.html">1</a>
+    <a href="photos-index-page-2-aid-100.html">2</a>
+    <a href="photos-index-page-5-aid-100.html">5</a>
+    </body></html>
+    """
+    result = manga_parser.parse_manga_info(html, "100")
+    assert result["page_count"] == 5
+
+
+def test_parse_manga_info_single_page():
+    html = "<html><body><h2>One Page</h2></body></html>"
+    result = manga_parser.parse_manga_info(html, "200")
+    assert result["page_count"] == 1
+
+
+def test_parse_manga_info_extracts_cover_from_uwthumb():
+    html = """
+    <html><body><h2>Test</h2>
+    <div class="uwthumb"><img src="//t4.qy0.ru/cover/c.jpg"></div>
+    </body></html>
+    """
+    result = manga_parser.parse_manga_info(html, "300")
+    assert result["cover_url"] == "https://t4.qy0.ru/cover/c.jpg"
+
+
+def test_parse_manga_info_extracts_cover_from_qy0_fallback():
+    html = """
+    <html><body><h2>Test</h2>
+    <img src="//t4.qy0.ru/thumb.jpg">
+    </body></html>
+    """
+    result = manga_parser.parse_manga_info(html, "301")
+    assert result["cover_url"] == "https://t4.qy0.ru/thumb.jpg"
+
+
+def test_parse_manga_info_empty_title():
+    html = "<html><body></body></html>"
+    result = manga_parser.parse_manga_info(html, "400")
+    assert result["title"] == ""
+
+
+def test_parse_pic_page_list_extracts_items():
+    html = """
+    <html><body>
+    <ul>
+      <li class="gallary_item"><a href="/photos-view-id-10.html">p1</a><span>001</span></li>
+      <li class="gallary_item"><a href="/photos-view-id-11.html">p2</a><span>002</span></li>
+    </ul>
+    </body></html>
+    """
+    items = manga_parser.parse_pic_page_list(html, "500", "https://www.wnacg.com/")
+    assert len(items) == 2
+    assert items[0].pic_num == "001"
+    assert items[1].page_url == "https://www.wnacg.com/photos-view-id-11.html"
+
+
+def test_parse_pic_page_list_empty():
+    html = "<html><body></body></html>"
+    items = manga_parser.parse_pic_page_list(html, "600", "https://www.wnacg.com/")
+    assert items == []
+
+
+def test_parse_pic_url_from_imgarea():
+    html = (
+        '<span id="imgarea">'
+        '<img src="//t4.qy0.ru/img/page1.jpg">'
+        "</span>"
+    )
+    url = manga_parser.parse_pic_url(html, "https://www.wnacg.com/")
+    assert url == "https://t4.qy0.ru/img/page1.jpg"
+
+
+def test_parse_pic_url_relative():
+    html = '<html><body><span id="imgarea"><img src="/images/p1.jpg"></span></body></html>'
+    url = manga_parser.parse_pic_url(html, "https://www.wnacg.com/")
+    assert url == "https://www.wnacg.com/images/p1.jpg"
+
+
+def test_parse_pic_url_none_when_no_imgarea():
+    html = "<html><body><div>no image here</div></body></html>"
+    url = manga_parser.parse_pic_url(html)
+    assert url is None
+
+
+def test_parse_pic_url_regex_fallback():
+    html = '<span id="imgarea"><img src="//t4.qy0.ru/fallback.jpg"></span>'
+    url = manga_parser.parse_pic_url(html, "https://www.wnacg.com/")
+    assert url == "https://t4.qy0.ru/fallback.jpg"
+
+
+# ── Block detector tests ─────────────────────────────────────────────────
+
+
+def test_is_cloudflare_challenge_just_a_moment():
+    assert is_cloudflare_challenge("<html><title>Just a moment...</title></html>") is True
+
+
+def test_is_cloudflare_challenge_challenges_domain():
+    html = '<script src="https://challenges.cloudflare.com/c.js"></script>'
+    assert is_cloudflare_challenge(html) is True
+
+
+def test_is_cloudflare_challenge_normal_html():
+    assert is_cloudflare_challenge("<html><body>normal page</body></html>") is False
+
+
+def test_is_cloudflare_challenge_empty():
+    assert is_cloudflare_challenge("") is False
+    assert is_cloudflare_challenge(None) is False
+
+
+def test_is_blocked_403():
+    assert is_blocked(status_code=403) is True
+
+
+def test_is_blocked_200_normal():
+    assert is_blocked(status_code=200, html="<html>ok</html>") is False
+
+
+def test_is_blocked_empty_html_not_blocked():
+    """Empty HTML alone should not be treated as blocked (could be network error)."""
+    assert is_blocked(html="") is False
+
+
+def test_is_blocked_forbidden_marker():
+    assert is_blocked(html="<html>403 Forbidden</html>") is True
+
+
+def test_is_blocked_none_status_no_html():
+    assert is_blocked(status_code=None, html=None) is False
+
+
+# ── Downloader helper tests ──────────────────────────────────────────────
+
+
+def test_image_extension_jpg():
+    assert image_extension("https://example.com/image.jpg?v=1") == ".jpg"
+
+
+def test_image_extension_png():
+    assert image_extension("https://example.com/image.png") == ".png"
+
+
+def test_image_extension_webp():
+    assert image_extension("https://example.com/image.webp#anchor") == ".webp"
+
+
+def test_image_extension_unknown_defaults_to_jpg():
+    assert image_extension("https://example.com/image") == ".jpg"
+
+
+def test_is_valid_image_jpg_signature():
+    data = b"\xff\xd8\xff" + b"\x00" * (10 * 1024)
+    assert is_valid_image(data) is True
+
+
+def test_is_valid_image_png_signature():
+    data = b"\x89PNG\r\n\x1a\n" + b"\x00" * (10 * 1024)
+    assert is_valid_image(data) is True
+
+
+def test_is_valid_image_too_small():
+    data = b"\xff\xd8\xff" + b"\x00" * 100
+    assert is_valid_image(data) is False
+
+
+def test_is_valid_image_wrong_signature():
+    data = b"not an image" + b"\x00" * (10 * 1024)
+    assert is_valid_image(data) is False
+
+
+# ── Paths helper tests ───────────────────────────────────────────────────
+
+
+def test_safe_filename():
+    from backend.app.core.paths import safe_filename
+    assert safe_filename("hello/world") == "hello_world"
+    assert safe_filename("") == "untitled"
+    assert safe_filename("  spaces  ") == "spaces"
+
+
+def test_manga_dir():
+    from backend.app.core.paths import manga_dir
+    result = manga_dir(Path("/data"), "123", "My Manga")
+    assert str(result) == "/data/Manga/[123] My Manga"
+
+
+def test_zip_path():
+    from backend.app.core.paths import zip_path
+    result = zip_path(Path("/data"), "123", "My Manga")
+    assert str(result) == "/data/Zip/[123] My Manga.zip"

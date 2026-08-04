@@ -1,15 +1,22 @@
 import { useEffect, useRef, useState } from "react";
-import type { TaskProgressMessage, WsStatus } from "../types";
+import type { SystemAlertMessage, TaskProgressMessage, WsStatus } from "../types";
 
-type WsListener = (payload: TaskProgressMessage) => void;
+type TaskListener = (payload: TaskProgressMessage) => void;
+type AlertListener = (payload: SystemAlertMessage) => void;
 
 let globalWsStatus: WsStatus = "connecting";
-let globalListeners: WsListener[] = [];
+let globalTaskListeners: TaskListener[] = [];
+let globalAlertListeners: AlertListener[] = [];
 let globalSocket: WebSocket | null = null;
-const globalClosed = false;
 
-function notifyListeners(payload: TaskProgressMessage) {
-  for (const listener of globalListeners) {
+function notifyTaskListeners(payload: TaskProgressMessage) {
+  for (const listener of globalTaskListeners) {
+    listener(payload);
+  }
+}
+
+function notifyAlertListeners(payload: SystemAlertMessage) {
+  for (const listener of globalAlertListeners) {
     listener(payload);
   }
 }
@@ -26,14 +33,23 @@ function connect() {
   };
 
   globalSocket.onmessage = (event) => {
-    const payload = JSON.parse(event.data) as TaskProgressMessage;
-    if (payload.type === "task_progress") {
-      notifyListeners(payload);
+    try {
+      const payload = JSON.parse(event.data) as Record<string, unknown>;
+      if (payload.type === "ping") {
+        globalSocket?.send("pong");
+        return;
+      }
+      if (payload.type === "task_progress") {
+        notifyTaskListeners(payload as unknown as TaskProgressMessage);
+      } else if (payload.type === "system_alert") {
+        notifyAlertListeners(payload as unknown as SystemAlertMessage);
+      }
+    } catch {
+      // ignore malformed messages
     }
   };
 
   globalSocket.onclose = () => {
-    if (globalClosed) return;
     globalWsStatus = "fallback";
     notifyStatusChange();
     window.setTimeout(connect, 3000);
@@ -58,7 +74,7 @@ export function useWebSocket() {
 
   useEffect(() => {
     statusListeners.push(setWsStatus);
-    if (!globalSocket && !globalClosed) {
+    if (!globalSocket) {
       connect();
     }
     return () => {
@@ -74,10 +90,23 @@ export function useWsTaskProgress(onProgress: (payload: TaskProgressMessage) => 
   callbackRef.current = onProgress;
 
   useEffect(() => {
-    const listener: WsListener = (payload) => callbackRef.current(payload);
-    globalListeners.push(listener);
+    const listener: TaskListener = (payload) => callbackRef.current(payload);
+    globalTaskListeners.push(listener);
     return () => {
-      globalListeners = globalListeners.filter((l) => l !== listener);
+      globalTaskListeners = globalTaskListeners.filter((l) => l !== listener);
+    };
+  }, []);
+}
+
+export function useWsSystemAlert(onAlert: (payload: SystemAlertMessage) => void) {
+  const callbackRef = useRef(onAlert);
+  callbackRef.current = onAlert;
+
+  useEffect(() => {
+    const listener: AlertListener = (payload) => callbackRef.current(payload);
+    globalAlertListeners.push(listener);
+    return () => {
+      globalAlertListeners = globalAlertListeners.filter((l) => l !== listener);
     };
   }, []);
 }

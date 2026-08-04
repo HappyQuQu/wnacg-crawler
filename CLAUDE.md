@@ -64,7 +64,7 @@ Control states: `paused`, `cancelled`. Failed/partial tasks can be retried back 
 
 ### Fetch Strategy
 
-Configurable mode (`http`/`browser`/`auto`/`full`). In `auto` mode, HTTP is tried first; Cloudflare challenges trigger Playwright fallback. Domain-level rate limiting and 403 backoff.
+Configurable mode (`http`/`browser`/`auto`). In `auto` mode, HTTP is tried first; Cloudflare challenges trigger Playwright fallback. Domain-level rate limiting and 403 backoff.
 
 ### Frontend Structure (`frontend/src/`)
 

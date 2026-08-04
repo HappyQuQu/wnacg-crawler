@@ -40,9 +40,11 @@ export function SettingsPage({
 
   function copyToken() {
     if (!config?.extension_token) return;
-    navigator.clipboard.writeText(config.extension_token).then(() => {
+    void navigator.clipboard.writeText(config.extension_token).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
+    }).catch(() => {
+      // clipboard write failed, ignore
     });
   }
   return (
@@ -218,16 +220,19 @@ export function SettingsPage({
               <span>扩展配置地址（复制到扩展设置）</span>
               <div className="token-input-row">
                 <input
-                  value={`${window.location.protocol}//${window.location.hostname}:8080`}
+                  value={`${window.location.protocol}//${window.location.hostname}:${window.location.port || "8080"}`}
                   readOnly
                   style={{ fontFamily: "monospace", fontSize: "12px" }}
                 />
                 <button
                   className="button secondary"
                   onClick={() => {
-                    navigator.clipboard.writeText(`${window.location.protocol}//${window.location.hostname}:8080`);
-                    setCopied(true);
-                    setTimeout(() => setCopied(false), 1500);
+                    void navigator.clipboard.writeText(`${window.location.protocol}//${window.location.hostname}:${window.location.port || "8080"}`).then(() => {
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 1500);
+                    }).catch(() => {
+                      // clipboard write failed, ignore
+                    });
                   }}
                   title="复制后台地址"
                 >

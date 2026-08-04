@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     db_path: Path = Path("./config/data.sqlite")
     is_zip: bool = True
     max_thread: int = Field(default=6, ge=1, le=20)
-    re_count: int = Field(default=5, ge=1, le=12)
+    re_count: int = Field(default=5, ge=1, le=12)  # deprecated: unused, kept for config compat
     request_delay_ms: int = Field(default=1200, ge=0, le=10000)
     timeout_seconds: int = Field(default=30, ge=5, le=120)
     user_agent: str = (

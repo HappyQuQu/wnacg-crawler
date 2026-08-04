@@ -1,3 +1,4 @@
+import { Component, type ReactNode, type ErrorInfo } from "react";
 import type { LayoutDashboard } from "lucide-react";
 
 type IconComponent = typeof LayoutDashboard;
@@ -87,4 +88,43 @@ export function LogLevelBadge({ level }: { level: string }) {
   const className = level === "error" ? "danger" : level === "warning" ? "warning" : "success";
   const labelMap: Record<string, string> = { info: "信息", warning: "警告", error: "错误" };
   return <span className={`status ${className}`}>{labelMap[level] ?? level}</span>;
+}
+
+type ErrorBoundaryProps = { children: ReactNode };
+type ErrorBoundaryState = { hasError: boolean; error: Error | null };
+
+export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo): void {
+    console.error("ErrorBoundary caught:", error, info.componentStack);
+  }
+
+  render(): ReactNode {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: 48, textAlign: "center" }}>
+          <h2 style={{ marginBottom: 8 }}>页面出错了</h2>
+          <p style={{ color: "#888", marginBottom: 16 }}>{this.state.error?.message}</p>
+          <button
+            className="button primary"
+            onClick={() => {
+              this.setState({ hasError: false, error: null });
+              window.location.reload();
+            }}
+          >
+            刷新页面
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }

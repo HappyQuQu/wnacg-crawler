@@ -43,6 +43,15 @@ type TaskItem = {
 type LibraryResponse = { items: unknown[]; total: number };
 type TasksResponse = { items: TaskItem[]; total: number };
 
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 // ── Status helpers ─────────────────────────────────────────────────────
 const statusLabels: Record<string, string> = {
   ready: "可加入", pending: "待确认", queued: "排队中", running: "下载中",
@@ -112,7 +121,7 @@ async function fetchTasks(): Promise<void> {
     taskListEl.innerHTML = items.map((t) => {
       const pct = t.progress_total > 0 ? Math.round((t.progress_current / t.progress_total) * 100) : 0;
       const doneClass = pct >= 100 ? "done" : "";
-      const name = t.title || t.manga_id;
+      const name = escapeHtml(t.title || t.manga_id);
       return `
         <div class="task-item">
           <div class="task-top">

@@ -22,3 +22,75 @@ def init_test_database() -> None:
     import asyncio
 
     asyncio.run(init_db())
+
+
+# ── Parser test fixtures ─────────────────────────────────────────────────
+
+SAMPLE_MANGA_INFO_HTML = """
+<html>
+<body>
+<h2>测试漫画标题</h2>
+<div class="uwthumb">
+  <img src="//t4.qy0.ru/cover/test_cover.jpg">
+</div>
+<a href="photos-index-page-1-aid-12345.html">1</a>
+<a href="photos-index-page-2-aid-12345.html">2</a>
+<a href="photos-index-page-3-aid-12345.html">3</a>
+</body>
+</html>
+"""
+
+SAMPLE_PIC_PAGE_LIST_HTML = """
+<html>
+<body>
+<ul>
+  <li class="gallary_item">
+    <a href="/photos-view-id-1001.html">pic1</a>
+    <span>001</span>
+  </li>
+  <li class="gallary_item">
+    <a href="/photos-view-id-1002.html">pic2</a>
+    <span>002</span>
+  </li>
+</ul>
+</body>
+</html>
+"""
+
+SAMPLE_PIC_URL_HTML = """
+<html>
+<body>
+<span id="imgarea">
+  <img src="//t4.qy0.ru/images/page001.jpg">
+</span>
+</body>
+</html>
+"""
+
+SAMPLE_PIC_URL_REGEX_HTML = """
+<html>
+<body>
+<span id="imgarea"><img src="//t4.qy0.ru/images/page001.jpg"></span>
+</body>
+</html>
+"""
+
+
+@pytest.fixture
+def manga_info_html():
+    return SAMPLE_MANGA_INFO_HTML
+
+
+@pytest.fixture
+def pic_page_list_html():
+    return SAMPLE_PIC_PAGE_LIST_HTML
+
+
+@pytest.fixture
+def pic_url_html():
+    return SAMPLE_PIC_URL_HTML
+
+
+@pytest.fixture
+def pic_url_regex_html():
+    return SAMPLE_PIC_URL_REGEX_HTML

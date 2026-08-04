@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { Task, TaskProgressMessage } from "../types";
 import { fetchTasks, retryTaskApi, controlTaskApi } from "../api";
 
@@ -6,6 +6,7 @@ export function useTasks() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [initialLoading, setInitialLoading] = useState(true);
+  const refreshRef = useRef<(() => Promise<void>) | null>(null);
 
   const selectedTask = useMemo(() => {
     return tasks.find((t) => t.task_id === selectedTaskId) ?? tasks[0] ?? null;
@@ -17,6 +18,9 @@ export function useTasks() {
     setSelectedTaskId((current) => current ?? data.items[0]?.task_id ?? null);
     setInitialLoading(false);
   }, []);
+
+  // Keep reference for WS-triggered refresh
+  refreshRef.current = refresh;
 
   const updateFromWs = useCallback((payload: TaskProgressMessage) => {
     setTasks((current) => {
@@ -37,25 +41,10 @@ export function useTasks() {
         };
       });
       if (matched) return updated;
-      return [
-        {
-          id: payload.task_id,
-          task_id: payload.task_id,
-          manga_id: payload.manga_id,
-          title: payload.title || "",
-          cover_url: payload.cover_url || "",
-          source: "websocket",
-          status: payload.status,
-          stage: payload.stage,
-          progress_current: payload.current,
-          progress_total: payload.total,
-          retry_count: 0,
-          last_error: payload.message,
-          created_at: null,
-          updated_at: new Date().toISOString(),
-        },
-        ...current,
-      ];
+      // Unknown task via WS — don't create ghost, trigger a full refresh
+      // to get the complete task object from the API.
+      void refreshRef.current?.();
+      return current;
     });
   }, []);
 

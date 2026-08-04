@@ -183,7 +183,7 @@ def image_extension(url: str) -> str:
 
 
 def is_valid_image(data: bytes) -> bool:
-    if len(data) <= 15 * 1024:
+    if len(data) <= 5 * 1024:
         return False
     signatures = (
         b"\xff\xd8\xff",

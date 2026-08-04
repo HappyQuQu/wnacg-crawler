@@ -19,9 +19,15 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
       ...init?.headers,
     },
   });
-  const body = (await response.json()) as ApiResponse<T>;
+  let body: ApiResponse<T>;
+  try {
+    body = (await response.json()) as ApiResponse<T>;
+  } catch {
+    throw new Error(`API response is not valid JSON: ${path} (${response.status})`);
+  }
   if (!response.ok || !body.ok) {
-    throw new Error(`API request failed: ${path}`);
+    const detail = body.error ? JSON.stringify(body.error) : response.statusText;
+    throw new Error(`API request failed: ${path} — ${detail}`);
   }
   return body.data;
 }

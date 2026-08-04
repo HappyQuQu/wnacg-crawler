@@ -9,7 +9,7 @@ from typing import Any
 from backend.app.core.config import get_settings
 from backend.app.core.paths import manga_dir, safe_filename, zip_path
 from backend.app.core.time import local_isoformat
-from backend.app.crawler.downloader import image_extension, is_valid_image
+from backend.app.crawler.downloader import image_extension
 from backend.app.db.database import SessionLocal
 from backend.app.db.models import DownloadFile, DownloadTask, MangaInfo, MangaPicPage
 from backend.app.db.repository import FileRepository, MangaRepository, TaskRepository, task_to_dict
@@ -36,11 +36,18 @@ class LibraryService:
             file_repo = FileRepository(session)
             task_repo = TaskRepository(session)
             infos = await manga_repo.list_infos(q=q)
+            manga_ids = {info.id for info in infos}
+
+            # Batch fetch all related data in 3 queries instead of 3N
+            pic_pages_map = await manga_repo.list_pic_pages_for_manga_ids(manga_ids)
+            files_map = await file_repo.list_for_manga_ids(manga_ids)
+            tasks_map = await task_repo.latest_for_manga_ids(manga_ids)
+
             items = []
             for info in infos:
-                pic_pages = await manga_repo.list_pic_pages(info.id)
-                files = await file_repo.list_for_manga(info.id)
-                task = await task_repo.latest_for_manga(info.id)
+                pic_pages = pic_pages_map.get(info.id, [])
+                files = files_map.get(info.id, [])
+                task = tasks_map.get(info.id)
                 item = self._summary(info, pic_pages, files, task)
                 if status and item["status"] != status:
                     continue
@@ -225,14 +232,14 @@ class LibraryService:
         rows = self._file_rows_sync(info, pic_pages, files)
         if not validate:
             return rows
-        validated: FileRows = []
-        for row in rows:
+
+        def _validate_row(row: FileRow) -> FileRow:
             path = Path(row["file_path"])
             if not path.exists():
                 row["status"] = "missing"
                 row["file_size"] = 0
                 row["error_message"] = "文件不存在"
-            elif not await asyncio.to_thread(_is_valid_image_file, path):
+            elif not _is_valid_image_file(path):
                 row["status"] = "invalid"
                 row["file_size"] = path.stat().st_size
                 row["error_message"] = "图片校验失败"
@@ -240,8 +247,12 @@ class LibraryService:
                 row["status"] = "valid"
                 row["file_size"] = path.stat().st_size
                 row["error_message"] = ""
-            validated.append(row)
-        return validated
+            return row
+
+        validated = await asyncio.gather(
+            *(asyncio.to_thread(_validate_row, row) for row in rows)
+        )
+        return list(validated)
 
     def _file_rows_sync(
         self,
@@ -311,7 +322,20 @@ def _expected_file_path(info: MangaInfo, page: MangaPicPage | None, pic_index: i
 
 def _is_valid_image_file(path: Path) -> bool:
     try:
-        return is_valid_image(path.read_bytes())
+        size = path.stat().st_size
+        if size <= 5 * 1024:
+            return False
+        with path.open("rb") as f:
+            header = f.read(32)
+        signatures = (
+            b"\xff\xd8\xff",
+            b"\x89PNG\r\n\x1a\n",
+            b"GIF87a",
+            b"GIF89a",
+            b"RIFF",
+            b"BM",
+        )
+        return any(header.startswith(sig) for sig in signatures)
     except OSError:
         return False
 
@@ -319,7 +343,7 @@ def _is_valid_image_file(path: Path) -> bool:
 def _create_zip(source: Path, target: Path) -> None:
     with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as zf:
         for file in sorted(source.iterdir()):
-            if file.is_file():
+            if file.is_file() and not file.name.startswith("."):
                 zf.write(file, file.name)
 
 

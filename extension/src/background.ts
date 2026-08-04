@@ -14,15 +14,19 @@ chrome.contextMenus.onClicked.addListener(async (info, tab) => {
   if (!mangaId) {
     return;
   }
-  await apiFetch("/api/extension/submit", {
-    method: "POST",
-    body: JSON.stringify({
-      manga_id: mangaId,
-      url,
-      title_hint: tab?.title || "",
-      page_type: "context_menu"
-    })
-  });
+  try {
+    await apiFetch("/api/extension/submit", {
+      method: "POST",
+      body: JSON.stringify({
+        manga_id: mangaId,
+        url,
+        title_hint: tab?.title || "",
+        page_type: "context_menu"
+      })
+    });
+  } catch (error) {
+    console.error("Context menu submit failed:", error);
+  }
 });
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

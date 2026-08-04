@@ -2,6 +2,7 @@ import asyncio
 import zipfile
 from collections.abc import Sequence
 from pathlib import Path
+from time import monotonic
 
 from backend.app.core.config import get_settings
 from backend.app.core.paths import manga_dir, safe_filename, zip_path
@@ -273,9 +274,11 @@ class TaskRunner:
         progress_lock = asyncio.Lock()
         worker_count = min(settings.max_thread, len(resolved)) if resolved else 1
         semaphore = asyncio.Semaphore(worker_count)
+        ws_throttle_interval = 0.5  # seconds between WS progress broadcasts
+        last_ws_at = 0.0
 
         async def download_page(page: MangaPicPage) -> None:
-            nonlocal processed_count, valid_count
+            nonlocal processed_count, valid_count, last_ws_at
             async with semaphore:
                 await self._ensure_runnable(task_id)
                 file_path = _target_image_path(save_dir, page)
@@ -318,12 +321,22 @@ class TaskRunner:
                         },
                     )
 
+                now = monotonic()
                 async with progress_lock:
                     processed_count += 1
                     if status == "valid":
                         valid_count += 1
                     current = processed_count
-                await self._set_task(task_id, "running", "downloading", current, len(resolved))
+                    elapsed = now - last_ws_at
+                    is_done = current == len(resolved)
+                    should_broadcast = elapsed >= ws_throttle_interval or is_done
+                    if should_broadcast:
+                        last_ws_at = now
+                if should_broadcast:
+                    total = len(resolved)
+                    await self._set_task(
+                        task_id, "running", "downloading", current, total
+                    )
 
         await asyncio.gather(*(download_page(page) for page in resolved))
         return valid_count
@@ -678,7 +691,7 @@ class TaskRunner:
                 await self._broadcast(task_to_dict(task))
 
     async def _broadcast(self, task: dict) -> None:
-        from backend.app.api.ws import manager
+        from backend.app.api.notification import manager
 
         manga_id = task["manga_id"]
         async with SessionLocal() as session:
@@ -705,7 +718,20 @@ class TaskRunner:
 
 def _is_valid_image_file(path: Path) -> bool:
     try:
-        return is_valid_image(path.read_bytes())
+        size = path.stat().st_size
+        if size <= 5 * 1024:
+            return False
+        with path.open("rb") as f:
+            header = f.read(32)
+        signatures = (
+            b"\xff\xd8\xff",
+            b"\x89PNG\r\n\x1a\n",
+            b"GIF87a",
+            b"GIF89a",
+            b"RIFF",
+            b"BM",
+        )
+        return any(header.startswith(sig) for sig in signatures)
     except OSError:
         return False
 
@@ -734,7 +760,7 @@ def _needs_retry(file: DownloadFile | None, file_path: Path) -> bool:
 def _create_zip(source: Path, target: Path) -> None:
     with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as zf:
         for file in sorted(source.iterdir()):
-            if file.is_file():
+            if file.is_file() and not file.name.startswith("."):
                 zf.write(file, file.name)
 
 
