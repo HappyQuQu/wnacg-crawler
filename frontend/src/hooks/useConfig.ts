@@ -17,6 +17,10 @@ export function useConfig() {
     const data = await saveConfigApi({
       download_path: config.download_path,
       is_zip: config.is_zip,
+      enable_image_compression: config.enable_image_compression,
+      image_max_size_kb: config.image_max_size_kb,
+      keep_original_images: config.keep_original_images,
+      allow_image_resize: config.allow_image_resize,
       max_thread: config.max_thread,
       request_delay_ms: config.request_delay_ms,
       timeout_seconds: config.timeout_seconds,

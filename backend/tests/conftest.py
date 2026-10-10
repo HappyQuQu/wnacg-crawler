@@ -24,6 +24,18 @@ def init_test_database() -> None:
     asyncio.run(init_db())
 
 
+@pytest.fixture(autouse=True)
+def prevent_real_downloads(monkeypatch):
+    from backend.app.crawler.browser_fetcher import BrowserManager
+    from backend.app.crawler.downloader import Downloader
+
+    async def forbidden(*args, **kwargs):
+        raise AssertionError("Tests must mock remote requests and browser launches")
+
+    monkeypatch.setattr(Downloader, "client", forbidden)
+    monkeypatch.setattr(BrowserManager, "_ensure_started", forbidden)
+
+
 # ── Parser test fixtures ─────────────────────────────────────────────────
 
 SAMPLE_MANGA_INFO_HTML = """

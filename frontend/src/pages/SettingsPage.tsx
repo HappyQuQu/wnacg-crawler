@@ -37,6 +37,11 @@ export function SettingsPage({
 }) {
   const [showToken, setShowToken] = useState(false);
   const [copied, setCopied] = useState(false);
+  const compressionLimitInvalid = config !== null && (
+    !Number.isInteger(config.image_max_size_kb)
+    || config.image_max_size_kb < 1
+    || config.image_max_size_kb > 102400
+  );
 
   function copyToken() {
     if (!config?.extension_token) return;
@@ -121,6 +126,69 @@ export function SettingsPage({
               />
               <span>下载完成后自动打包 ZIP</span>
             </label>
+          </section>
+
+          <section className="settings-card">
+            <div className="settings-card-header">
+              <div className="settings-card-icon"><Image size={18} /></div>
+              <div>
+                <h3>图片压缩</h3>
+                <p>控制新下载图片的大小和原图保留</p>
+              </div>
+              <label className="toggle-field compact-toggle">
+                <input
+                  type="checkbox"
+                  checked={config.enable_image_compression}
+                  disabled={loading}
+                  onChange={(e) => updateConfig({ enable_image_compression: e.target.checked })}
+                />
+                <span>启用压缩</span>
+              </label>
+            </div>
+
+            <label className="field">
+              <span>每张图片大小上限（KB）</span>
+              <input
+                type="number"
+                min={1}
+                max={102400}
+                step={1}
+                value={config.image_max_size_kb}
+                disabled={loading || !config.enable_image_compression}
+                aria-invalid={compressionLimitInvalid}
+                onChange={(e) => updateConfig({ image_max_size_kb: Number(e.target.value) })}
+              />
+            </label>
+            {compressionLimitInvalid && (
+              <p className="settings-hint" role="alert">大小上限请输入 1 至 102400 的整数。</p>
+            )}
+
+            <label className="toggle-field">
+              <input
+                type="checkbox"
+                checked={config.keep_original_images}
+                disabled={loading || !config.enable_image_compression}
+                onChange={(e) => updateConfig({ keep_original_images: e.target.checked })}
+              />
+              <span>保留压缩前的原图</span>
+            </label>
+            <label className="toggle-field">
+              <input
+                type="checkbox"
+                checked={config.allow_image_resize}
+                disabled={loading || !config.enable_image_compression}
+                onChange={(e) => updateConfig({ allow_image_resize: e.target.checked })}
+              />
+              <span>允许缩小分辨率</span>
+            </label>
+            <p className="settings-hint">
+              默认关闭压缩。开启后先降低编码质量，只有允许缩小分辨率时才改变尺寸。
+              无法达到上限时保留较小的有效文件并在日志中提示，压缩失败则保存原图。
+            </p>
+            <p className="settings-hint">
+              原图保存在下载目录的 Original 文件夹，仅为发生压缩的图片保留副本。
+              动画保持原样，已有有效文件不会自动重压。
+            </p>
           </section>
 
           {/* ---- 网络 & 代理 ---- */}
@@ -292,7 +360,7 @@ export function SettingsPage({
             <button
               className="button primary"
               onClick={() => void onSave()}
-              disabled={loading}
+              disabled={loading || compressionLimitInvalid}
             >
               <CheckCircle2 size={15} />保存所有设置
             </button>

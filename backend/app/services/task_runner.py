@@ -1,12 +1,18 @@
 import asyncio
-import zipfile
 from collections.abc import Sequence
 from pathlib import Path
 from time import monotonic
 
 from backend.app.core.config import get_settings
-from backend.app.core.paths import manga_dir, safe_filename, zip_path
-from backend.app.crawler.downloader import image_extension, is_valid_image
+from backend.app.core.errors import ImageHTTPError
+from backend.app.core.files import atomic_write_bytes
+from backend.app.core.paths import manga_dir, original_dir, safe_filename, zip_path
+from backend.app.crawler.downloader import image_extension
+from backend.app.crawler.image_processing import PreparedImage, prepare_image
+from backend.app.crawler.images import (
+    find_valid_image_path,
+    is_valid_image_file,
+)
 from backend.app.crawler.parser import PicPageItem, manga_parser
 from backend.app.crawler.smart_fetcher import smart_fetch, smart_fetch_bytes
 from backend.app.db.database import SessionLocal
@@ -17,6 +23,7 @@ from backend.app.db.repository import (
     TaskRepository,
     task_to_dict,
 )
+from backend.app.services.archive_service import create_zip
 from backend.app.services.log_service import log_service
 
 CONTROLLED_TASK_STATUSES = {"paused", "cancelled"}
@@ -215,9 +222,15 @@ class TaskRunner:
         await self._set_task(task_id, "running", "resolving_images", 0, len(items))
         for item in items:
             await self._ensure_runnable(task_id)
+            await self._log(
+                "info", "image_resolve_started",
+                f"正在解析第 {item.pic_index}/{len(items)} 张图片",
+                task_id, manga_id, "resolving_images",
+                {"page_index": item.pic_index, "page_url": item.page_url},
+            )
             html = await smart_fetch(item.page_url, referer=settings.manga_main_url)
             await self._ensure_runnable(task_id)
-            pic_url = manga_parser.parse_pic_url(html, settings.manga_main_url)
+            pic_url = manga_parser.parse_pic_url(html, item.page_url)
             status = "resolved" if pic_url else "failed"
             error = "" if pic_url else "未解析到图片地址"
             if error:
@@ -244,6 +257,13 @@ class TaskRunner:
             await self._set_task(
                 task_id, "running", "resolving_images", item.pic_index, len(items)
             )
+            if pic_url:
+                await self._log(
+                    "info", "image_url_resolved",
+                    f"第 {item.pic_index}/{len(items)} 张图片地址解析成功",
+                    task_id, manga_id, "resolving_images",
+                    {"page_index": item.pic_index, "page_url": item.page_url},
+                )
 
         await self._set_manga_status(manga_id, "ready", pic_count=len(items))
         await self._log(
@@ -262,11 +282,13 @@ class TaskRunner:
             manga_repo = MangaRepository(session)
             info = await manga_repo.get_info(manga_id)
             pic_pages = await manga_repo.list_pic_pages(manga_id)
+            files = await FileRepository(session).list_for_manga(manga_id)
 
         title = info.title if info and info.title else manga_id
         save_dir = manga_dir(Path(settings.download_path), manga_id, title)
         save_dir.mkdir(parents=True, exist_ok=True)
-        resolved = [page for page in pic_pages if page.pic_url]
+        files_by_index = {file.pic_index: file for file in files}
+        resolved = pic_pages
         await self._set_task(task_id, "running", "downloading", 0, len(resolved))
 
         valid_count = 0
@@ -285,22 +307,31 @@ class TaskRunner:
                 status = "failed"
                 error = ""
                 try:
-                    already_valid = file_path.exists() and await asyncio.to_thread(
-                        _is_valid_image_file, file_path
+                    file = files_by_index.get(page.pic_index)
+                    existing = await asyncio.to_thread(
+                        find_valid_image_path, file_path, Path(file.file_path) if file else None
                     )
-                    if already_valid:
-                        status = "valid"
+                    if existing is not None:
+                        file_path = existing
                     else:
-                        data = await smart_fetch_bytes(page.pic_url, referer=page.page_url)
-                        await self._ensure_runnable(task_id)
-                        if not is_valid_image(data):
-                            raise RuntimeError(
-                                "图片下载失败（HTTP 和浏览器均无法获取有效图片，"
-                                "可能被 Cloudflare 拦截或源文件损坏）"
-                            )
-                        await asyncio.to_thread(file_path.write_bytes, data)
-                        status = "valid"
+                        await self._log(
+                            "info", "image_download_started",
+                            f"正在下载第 {page.pic_index}/{len(resolved)} 张图片",
+                            task_id, manga_id, "downloading",
+                            {"pic_index": page.pic_index, "page_url": page.page_url},
+                        )
+                        file_path, _ = await self._download_page_image(
+                            task_id, manga_id, page, file_path
+                        )
+                    status = "valid"
                     await self._record_file(manga_id, page.pic_index, file_path, status)
+                    await self._log(
+                        "info", "image_file_reused" if existing else "image_download_completed",
+                        f"第 {page.pic_index}/{len(resolved)} 张图片"
+                        + ("复用已有有效文件" if existing else "下载并校验成功"),
+                        task_id, manga_id, "downloading",
+                        {"pic_index": page.pic_index, "file_path": str(file_path)},
+                    )
                 except TaskControlSignal:
                     raise
                 except Exception as exc:
@@ -362,91 +393,59 @@ class TaskRunner:
             file_path = _target_image_path(save_dir, page)
             if file is not None:
                 file_path = Path(file.file_path)
-            if _needs_retry(file, file_path):
+            if await asyncio.to_thread(_needs_retry, file, file_path):
                 problem_pages.append((page, file_path))
 
         await self._set_task(task_id, "running", "retrying_failed_images", 0, len(problem_pages))
         if not problem_pages:
             return {"processed": 0, "fixed": 0, "failed": 0}
 
-        processed = 0
         fixed = 0
         failed = 0
         re_resolved = 0
-        for page, file_path in problem_pages:
+        for processed, (page, file_path) in enumerate(problem_pages, start=1):
             await self._ensure_runnable(task_id)
-            processed += 1
-            if not page.pic_url:
-                page = await self._refresh_pic_url(
-                    task_id, manga_id, page, processed, len(problem_pages)
-                )
-                file_path = _target_image_path(save_dir, page)
-                if page.pic_url:
-                    re_resolved += 1
-
+            await self._log(
+                "info", "problem_image_retry_started",
+                f"正在修复第 {page.pic_index} 张图片（{processed}/{len(problem_pages)}）",
+                task_id, manga_id, "retrying_failed_images",
+                {"pic_index": page.pic_index, "page_url": page.page_url},
+            )
             try:
-                if not page.pic_url:
-                    raise RuntimeError("未解析到图片地址")
-                await self._download_problem_image(task_id, page, file_path)
-                fixed += 1
-                await self._record_file(manga_id, page.pic_index, file_path, "valid")
-            except Exception as first_exc:
-                refreshed = await self._refresh_pic_url(
-                    task_id, manga_id, page, processed, len(problem_pages)
+                existing = await asyncio.to_thread(
+                    find_valid_image_path, _target_image_path(save_dir, page), file_path
                 )
-                if refreshed.pic_url and refreshed.pic_url != page.pic_url:
-                    page = refreshed
-                    file_path = _target_image_path(save_dir, page)
-                    re_resolved += 1
-                    try:
-                        await self._download_problem_image(task_id, page, file_path)
-                        fixed += 1
-                        await self._record_file(manga_id, page.pic_index, file_path, "valid")
-                    except Exception as retry_exc:
-                        failed += 1
-                        error = _exception_message(retry_exc)
-                        await self._record_file(
-                            manga_id,
-                            page.pic_index,
-                            file_path,
-                            "failed",
-                            error,
-                        )
-                        await self._log(
-                            "warning",
-                            "problem_image_retry_failed",
-                            error,
-                            task_id,
-                            manga_id,
-                            "retrying_failed_images",
-                            {"pic_index": page.pic_index, "file_path": str(file_path)},
-                        )
+                if existing is not None:
+                    file_path = existing
                 else:
-                    failed += 1
-                    error = _exception_message(first_exc)
-                    await self._record_file(
-                        manga_id, page.pic_index, file_path, "failed", error
+                    file_path, refreshed = await self._download_page_image(
+                        task_id, manga_id, page, file_path, refresh_on_failure=True
                     )
-                    await self._log(
-                        "warning",
-                        "problem_image_retry_failed",
-                        error,
-                        task_id,
-                        manga_id,
-                        "retrying_failed_images",
-                        {"pic_index": page.pic_index, "file_path": str(file_path)},
-                    )
+                    re_resolved += int(refreshed)
+                await self._record_file(manga_id, page.pic_index, file_path, "valid")
+                fixed += 1
+                await self._log(
+                    "info", "problem_image_retry_completed",
+                    f"第 {page.pic_index} 张图片修复并校验成功",
+                    task_id, manga_id, "retrying_failed_images",
+                    {"pic_index": page.pic_index, "file_path": str(file_path)},
+                )
+            except TaskControlSignal:
+                raise
+            except Exception as exc:
+                failed += 1
+                error = _exception_message(exc)
+                await self._record_file(manga_id, page.pic_index, file_path, "failed", error)
+                await self._log(
+                    "warning", "problem_image_retry_failed", error,
+                    task_id, manga_id, "retrying_failed_images",
+                    {"pic_index": page.pic_index, "file_path": str(file_path)},
+                )
             await self._set_task(
-                task_id,
-                "running",
-                "retrying_failed_images",
-                processed,
-                len(problem_pages),
+                task_id, "running", "retrying_failed_images", processed, len(problem_pages)
             )
         return {
-            "processed": processed,
-            "fixed": fixed,
-            "failed": failed,
+            "processed": len(problem_pages), "fixed": fixed, "failed": failed,
             "re_resolved": re_resolved,
         }
 
@@ -455,18 +454,15 @@ class TaskRunner:
         task_id: str,
         manga_id: str,
         page: MangaPicPage,
-        current: int,
-        total: int,
     ) -> MangaPicPage:
         if not page.page_url:
             return page
 
         settings = get_settings()
-        await self._set_task(task_id, "running", "resolving_images", current, total)
         await self._ensure_runnable(task_id)
         html = await smart_fetch(page.page_url, referer=settings.manga_main_url)
         await self._ensure_runnable(task_id)
-        pic_url = manga_parser.parse_pic_url(html, settings.manga_main_url)
+        pic_url = manga_parser.parse_pic_url(html, page.page_url)
         status = "resolved" if pic_url else "failed"
         error = "" if pic_url else "未解析到图片地址"
         if error:
@@ -491,18 +487,64 @@ class TaskRunner:
                 error_message=error,
             )
 
-    async def _download_problem_image(
-        self, task_id: str, page: MangaPicPage, file_path: Path
-    ) -> None:
-        data = await smart_fetch_bytes(page.pic_url, referer=page.page_url)
-        await self._ensure_runnable(task_id)
-        if not is_valid_image(data):
-            raise RuntimeError(
-                "图片下载失败（HTTP 和浏览器均无法获取有效图片，"
-                "可能被 Cloudflare 拦截或源文件损坏）"
+    async def _download_page_image(
+        self, task_id: str, manga_id: str, page: MangaPicPage, file_path: Path,
+        refresh_on_failure: bool = False,
+    ) -> tuple[Path, bool]:
+        refreshed = False
+        if not page.pic_url:
+            page = await self._refresh_pic_url(task_id, manga_id, page)
+            refreshed = True
+        if not page.pic_url:
+            raise RuntimeError("未解析到图片地址")
+
+        settings = get_settings()
+
+        async def fetch_image() -> tuple[bytes, PreparedImage]:
+            data = await smart_fetch_bytes(page.pic_url, referer=page.page_url)
+            await self._ensure_runnable(task_id)
+            prepared = await asyncio.to_thread(
+                prepare_image, data, enabled=settings.enable_image_compression,
+                max_size_kb=settings.image_max_size_kb, allow_resize=settings.allow_image_resize,
             )
-        file_path.parent.mkdir(parents=True, exist_ok=True)
-        await asyncio.to_thread(file_path.write_bytes, data)
+            return data, prepared
+
+        try:
+            data, prepared = await fetch_image()
+        except TaskControlSignal:
+            raise
+        except Exception as exc:
+            forbidden = isinstance(exc, ImageHTTPError) and exc.status_code == 403
+            if refreshed or not (forbidden or refresh_on_failure):
+                raise
+            old_url = page.pic_url
+            page = await self._refresh_pic_url(task_id, manga_id, page)
+            if not page.pic_url:
+                raise RuntimeError("刷新详情页后未解析到图片地址") from exc
+            if page.pic_url == old_url:
+                raise RuntimeError("详情页仍返回相同图片地址，停止本次下载，稍后再试") from exc
+            refreshed = True
+            await self._log(
+                "info", "image_url_refreshed", "已刷新失效图片地址",
+                task_id, manga_id, "downloading", {"pic_index": page.pic_index},
+            )
+            data, prepared = await fetch_image()
+        backup = None
+        if prepared.processed and settings.keep_original_images:
+            async with SessionLocal() as session:
+                info = await MangaRepository(session).get_info(manga_id)
+            title = info.title if info and info.title else manga_id
+            backup = original_dir(Path(settings.download_path), manga_id, title) / (
+                file_path.stem + prepared.source_extension
+            )
+        await self._ensure_runnable(task_id)
+        target, warning = await asyncio.to_thread(_save_image, file_path, data, prepared, backup)
+        if warning:
+            await self._log(
+                "warning", "image_compression_warning", warning, task_id, manga_id,
+                "downloading", {"pic_index": page.pic_index, "file_path": str(target)},
+            )
+        return target, refreshed
 
     async def _finish_problem_image_retry(
         self,
@@ -528,7 +570,6 @@ class TaskRunner:
             f"failed={result['failed']};processed={result['processed']};"
             f"re_resolved={result.get('re_resolved', 0)}"
         )
-        await self._set_manga_status(manga_id, status, pic_count=total_files, error="")
         await self._log(
             "info" if finished else "warning",
             "retry_failed_images_finished",
@@ -542,6 +583,7 @@ class TaskRunner:
             await self._set_task(task_id, "running", "zipping", valid_count, total_files)
             await self._ensure_runnable(task_id)
             await self._zip_manga(manga_id)
+        await self._set_manga_status(manga_id, status, pic_count=total_files, error="")
         await self._set_task(task_id, status, "done", valid_count, total_files, message)
 
     async def _verify_and_finish(
@@ -591,10 +633,13 @@ class TaskRunner:
         title = info.title if info and info.title else manga_id
         source = manga_dir(Path(settings.download_path), manga_id, title)
         target = zip_path(Path(settings.download_path), manga_id, title)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        if target.exists():
-            target.unlink()
-        await asyncio.to_thread(_create_zip, source, target)
+        async with SessionLocal() as session:
+            files = await FileRepository(session).list_for_manga(manga_id)
+        if info is None or not files or len(files) != info.pic_count:
+            raise RuntimeError("图片不完整，无法打包")
+        await asyncio.to_thread(
+            create_zip, source, target, [Path(file.file_path) for file in files]
+        )
 
     async def _record_file(
         self,
@@ -716,24 +761,20 @@ class TaskRunner:
         )
 
 
-def _is_valid_image_file(path: Path) -> bool:
-    try:
-        size = path.stat().st_size
-        if size <= 5 * 1024:
-            return False
-        with path.open("rb") as f:
-            header = f.read(32)
-        signatures = (
-            b"\xff\xd8\xff",
-            b"\x89PNG\r\n\x1a\n",
-            b"GIF87a",
-            b"GIF89a",
-            b"RIFF",
-            b"BM",
-        )
-        return any(header.startswith(sig) for sig in signatures)
-    except OSError:
-        return False
+def _save_image(
+    file_path: Path, source: bytes, prepared: PreparedImage, backup: Path | None
+) -> tuple[Path, str]:
+    if backup is not None and not is_valid_image_file(backup):
+        try:
+            atomic_write_bytes(backup, source)
+        except OSError:
+            # Keep the source in Manga if preserving the separate original fails.
+            target = file_path.with_suffix(prepared.source_extension)
+            atomic_write_bytes(target, source)
+            return target, "原图备份失败，已在下载目录保存原图，跳过压缩"
+    target = file_path.with_suffix(prepared.extension)
+    atomic_write_bytes(target, prepared.data)
+    return target, prepared.warning
 
 
 def _target_image_path(save_dir: Path, page: MangaPicPage) -> Path:
@@ -754,14 +795,7 @@ def _needs_retry(file: DownloadFile | None, file_path: Path) -> bool:
         return True
     if file.status != "valid":
         return True
-    return not file_path.exists() or not _is_valid_image_file(file_path)
-
-
-def _create_zip(source: Path, target: Path) -> None:
-    with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as zf:
-        for file in sorted(source.iterdir()):
-            if file.is_file() and not file.name.startswith("."):
-                zf.write(file, file.name)
+    return not file_path.exists() or not is_valid_image_file(file_path)
 
 
 task_runner = TaskRunner()

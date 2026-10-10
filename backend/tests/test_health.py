@@ -11,6 +11,7 @@ from backend.app.crawler.parser import manga_parser
 from backend.app.db.database import SessionLocal, init_db
 from backend.app.db.repository import FileRepository, MangaRepository, TaskRepository
 from backend.app.main import app
+from backend.tests.image_fixtures import image_bytes
 
 
 def test_health_check():
@@ -83,7 +84,7 @@ def test_library_retry_failed_files_downloads_problem_images(monkeypatch):
     async def fake_get_bytes(url: str, referer: str | None = None) -> bytes:
         assert url == "https://example.test/repair.jpg"
         assert referer == "https://example.test/repair-page.html"
-        return b"\xff\xd8\xff" + b"1" * (16 * 1024)
+        return image_bytes()
 
     monkeypatch.setattr(runner_module, "smart_fetch_bytes", fake_get_bytes)
 
@@ -113,9 +114,9 @@ def test_library_retry_failed_files_re_resolves_missing_pic_url(monkeypatch):
         return '<span id="imgarea"><img src="/images/recovered.jpg"></span>'
 
     async def fake_get_bytes(url: str, referer: str | None = None) -> bytes:
-        assert url == "https://www.wnacg.com/images/recovered.jpg"
+        assert url == "https://example.test/images/recovered.jpg"
         assert referer == "https://example.test/missing-pic-url.html"
-        return b"\xff\xd8\xff" + b"2" * (16 * 1024)
+        return image_bytes()
 
     monkeypatch.setattr(runner_module, "smart_fetch", fake_smart_fetch)
     monkeypatch.setattr(runner_module, "smart_fetch_bytes", fake_get_bytes)
@@ -129,7 +130,7 @@ def test_library_retry_failed_files_re_resolves_missing_pic_url(monkeypatch):
     assert detail_response.status_code == 200
     detail = detail_response.json()["data"]
     assert detail["status"] == "completed"
-    assert detail["files"][0]["pic_url"] == "https://www.wnacg.com/images/recovered.jpg"
+    assert detail["files"][0]["pic_url"] == "https://example.test/images/recovered.jpg"
     assert detail["files"][0]["status"] == "valid"
 
 
@@ -216,7 +217,7 @@ def test_download_images_uses_parallel_workers(monkeypatch):
         peak = max(peak, active)
         await asyncio.sleep(0.05)
         active -= 1
-        return b"\xff\xd8\xff" + url.encode() + b"3" * (16 * 1024)
+        return image_bytes()
 
     monkeypatch.setattr(runner_module, "smart_fetch_bytes", fake_get_bytes)
 
@@ -278,7 +279,7 @@ async def _seed_library_item(manga_id: str) -> None:
     target_dir = manga_dir(base, manga_id, title)
     target_dir.mkdir(parents=True, exist_ok=True)
     image_path = target_dir / "0001_001.jpg"
-    image_path.write_bytes(b"\xff\xd8\xff" + b"0" * (16 * 1024))
+    image_path.write_bytes(image_bytes())
 
     async with SessionLocal() as session:
         manga_repo = MangaRepository(session)
@@ -616,17 +617,15 @@ def test_image_extension_unknown_defaults_to_jpg():
     assert image_extension("https://example.com/image") == ".jpg"
 
 
-def test_is_valid_image_jpg_signature():
-    data = b"\xff\xd8\xff" + b"\x00" * (10 * 1024)
-    assert is_valid_image(data) is True
+def test_is_valid_image_jpg():
+    assert is_valid_image(image_bytes()) is True
 
 
-def test_is_valid_image_png_signature():
-    data = b"\x89PNG\r\n\x1a\n" + b"\x00" * (10 * 1024)
-    assert is_valid_image(data) is True
+def test_is_valid_image_png():
+    assert is_valid_image(image_bytes("PNG")) is True
 
 
-def test_is_valid_image_too_small():
+def test_is_valid_image_incomplete_jpeg():
     data = b"\xff\xd8\xff" + b"\x00" * 100
     assert is_valid_image(data) is False
 

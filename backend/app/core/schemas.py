@@ -63,6 +63,10 @@ class ExtensionSubmitManyRequest(BaseModel):
 class ConfigUpdateRequest(BaseModel):
     download_path: str | None = None
     is_zip: bool | None = None
+    enable_image_compression: bool | None = None
+    image_max_size_kb: int | None = Field(default=None, ge=1, le=102400)
+    keep_original_images: bool | None = None
+    allow_image_resize: bool | None = None
     max_thread: int | None = Field(default=None, ge=1, le=20)
     re_count: int | None = Field(default=None, ge=1, le=12)
     request_delay_ms: int | None = Field(default=None, ge=0, le=10000)

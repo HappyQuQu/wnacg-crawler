@@ -19,7 +19,7 @@ class LogService:
         details: dict[str, Any] | None = None,
     ) -> None:
         async with SessionLocal() as session:
-            await LogRepository(session).create(
+            row = await LogRepository(session).create(
                 level=level,
                 event=event,
                 message=message,
@@ -28,6 +28,10 @@ class LogService:
                 stage=stage,
                 details=json.dumps(details or {}, ensure_ascii=False),
             )
+            item = log_to_dict(row)
+        from backend.app.api.notification import manager
+
+        await manager.broadcast({"type": "task_log", "item": item})
 
     async def list(
         self,

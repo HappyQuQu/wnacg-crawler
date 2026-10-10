@@ -10,7 +10,9 @@ from loguru import logger
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from backend.app.core.config import get_settings
+from backend.app.core.errors import ImageHTTPError
 from backend.app.crawler.block_detector import is_blocked, is_cloudflare_challenge
+from backend.app.crawler.images import is_valid_image as is_valid_image
 
 DEFAULT_HEADERS = {
     "Accept": (
@@ -145,6 +147,8 @@ class Downloader:
             await self._wait_for_delay()
             client = await self.client()
             response = await client.get(url, headers=headers)
+            if response.status_code == 403:
+                raise ImageHTTPError(403, url)
             response.raise_for_status()
 
             content_type = response.headers.get("content-type", "")
@@ -176,21 +180,7 @@ downloader = Downloader()
 
 def image_extension(url: str) -> str:
     clean = url.split("?", 1)[0].split("#", 1)[0].lower()
-    for ext in (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"):
+    for ext in (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".avif"):
         if clean.endswith(ext):
             return ext
     return ".jpg"
-
-
-def is_valid_image(data: bytes) -> bool:
-    if len(data) <= 5 * 1024:
-        return False
-    signatures = (
-        b"\xff\xd8\xff",
-        b"\x89PNG\r\n\x1a\n",
-        b"GIF87a",
-        b"GIF89a",
-        b"RIFF",
-        b"BM",
-    )
-    return any(data.startswith(signature) for signature in signatures)

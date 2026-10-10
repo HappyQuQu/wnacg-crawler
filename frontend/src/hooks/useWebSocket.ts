@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import type { SystemAlertMessage, TaskProgressMessage, WsStatus } from "../types";
+import type { LogItem, SystemAlertMessage, TaskLogMessage, TaskProgressMessage, WsStatus } from "../types";
 
 type TaskListener = (payload: TaskProgressMessage) => void;
 type AlertListener = (payload: SystemAlertMessage) => void;
+type LogListener = (item: LogItem) => void;
 
 let globalWsStatus: WsStatus = "connecting";
 let globalTaskListeners: TaskListener[] = [];
 let globalAlertListeners: AlertListener[] = [];
+let globalLogListeners: LogListener[] = [];
 let globalSocket: WebSocket | null = null;
 
 function notifyTaskListeners(payload: TaskProgressMessage) {
@@ -43,6 +45,9 @@ function connect() {
         notifyTaskListeners(payload as unknown as TaskProgressMessage);
       } else if (payload.type === "system_alert") {
         notifyAlertListeners(payload as unknown as SystemAlertMessage);
+      } else if (payload.type === "task_log") {
+        const { item } = payload as unknown as TaskLogMessage;
+        for (const listener of globalLogListeners) listener(item);
       }
     } catch {
       // ignore malformed messages
@@ -107,6 +112,18 @@ export function useWsSystemAlert(onAlert: (payload: SystemAlertMessage) => void)
     globalAlertListeners.push(listener);
     return () => {
       globalAlertListeners = globalAlertListeners.filter((l) => l !== listener);
+    };
+  }, []);
+}
+
+export function useWsLog(onLog: LogListener) {
+  const callbackRef = useRef(onLog);
+  callbackRef.current = onLog;
+  useEffect(() => {
+    const listener: LogListener = (item) => callbackRef.current(item);
+    globalLogListeners.push(listener);
+    return () => {
+      globalLogListeners = globalLogListeners.filter((l) => l !== listener);
     };
   }, []);
 }

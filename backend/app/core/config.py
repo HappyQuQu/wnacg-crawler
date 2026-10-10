@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     download_path: Path = Path("./data")
     db_path: Path = Path("./config/data.sqlite")
     is_zip: bool = True
+    enable_image_compression: bool = False
+    image_max_size_kb: int = Field(default=1024, ge=1, le=102400)
+    keep_original_images: bool = True
+    allow_image_resize: bool = False
     max_thread: int = Field(default=6, ge=1, le=20)
     re_count: int = Field(default=5, ge=1, le=12)  # deprecated: unused, kept for config compat
     request_delay_ms: int = Field(default=1200, ge=0, le=10000)

@@ -1,5 +1,6 @@
 import {
   Archive,
+  AlertTriangle,
   ExternalLink,
   FileText,
   FolderOpen,
@@ -12,6 +13,7 @@ import {
 import type { LibraryItem } from "../types";
 import { formatBytes, formatTime, libraryDisplayName } from "../utils";
 import { Info, StatusBadge } from "./Common";
+import { DetailSummary } from "./DetailSummary";
 
 export function LibraryDetailPanel({
   item,
@@ -45,28 +47,15 @@ export function LibraryDetailPanel({
   if (!item) return null;
 
   return (
-    <aside className="library-detail-panel">
+    <aside className="library-detail-panel" aria-label="资料库详情">
       <div className="detail-panel-header">
-        <button className="icon-button" onClick={onClose} title="关闭">
+        <h2>资料库详情</h2>
+        <button className="icon-button" onClick={onClose} title="关闭详情" aria-label="关闭详情">
           <X size={18} />
         </button>
       </div>
 
-      <div className="detail-cover-wrap">
-        <div className={`detail-cover ${noImageMode ? "no-image-blur" : ""}`}>
-          {item.cover_url ? (
-            <img src={item.cover_url} alt={item.title || item.manga_id} />
-          ) : (
-            <div className="detail-cover-placeholder" />
-          )}
-        </div>
-      </div>
-
-      <div className="detail-title-section">
-        <h3>{libraryDisplayName(item)}</h3>
-        <span className="mono">{item.manga_id}</span>
-        <StatusBadge status={item.status} />
-      </div>
+      <DetailSummary title={libraryDisplayName(item)} mangaId={item.manga_id} coverUrl={item.cover_url} status={item.status} noImageMode={noImageMode} />
 
       <div className="detail-grid">
         <Info label="完整度" value={`${Math.round(item.completeness * 100)}%`} />
@@ -95,14 +84,16 @@ export function LibraryDetailPanel({
         </button>
       </div>
 
-      <div className="detail-path">
-        <FolderOpen size={14} />
-        <span>{item.download_dir}</span>
-      </div>
+      <details className="detail-path">
+        <summary><FolderOpen size={14} /><span>保存目录</span></summary>
+        <span>{item.download_dir || "尚未生成目录"}</span>
+      </details>
 
-      <div className="detail-files-section">
+      {item.last_error && <div className="notice danger"><AlertTriangle size={14} /><span>{item.last_error}</span></div>}
+
+      <section className="detail-files-section" aria-label="文件列表" aria-busy={detailLoading}>
         <div className="detail-files-header">
-          <span className="eyebrow">文件列表</span>
+          <span className="detail-files-heading">文件列表 <span className="mono">{files?.length ?? 0}</span></span>
           <div className="detail-files-tools">
             <label className="filter-toggle">
               <input
@@ -112,48 +103,38 @@ export function LibraryDetailPanel({
               />
               <ListFilter size={14} /><span>只看问题</span>
             </label>
-            <button className="button secondary compact" onClick={onRefreshDetail} disabled={detailLoading}>
-              <RefreshCw size={14} />
+            <button className="icon-button" onClick={onRefreshDetail} disabled={detailLoading} title="刷新文件列表" aria-label="刷新文件列表">
+              <RefreshCw size={14} className={detailLoading ? "spin" : ""} />
             </button>
           </div>
         </div>
-        <div className="table-wrap file-table-wrap">
-          <table className="file-table">
-            <thead>
-              <tr>
-                <th>序号</th>
-                <th>文件</th>
-                <th>状态</th>
-                <th>大小</th>
-                <th>错误</th>
-                <th>更新时间</th>
-              </tr>
-            </thead>
-            <tbody>
-              {files?.map((file) => (
-                <tr key={`${item.manga_id}-${file.pic_index}`}>
-                  <td className="mono">{file.pic_index}</td>
-                  <td className="wrap-cell file-name-cell">
-                    <div className="file-meta">
-                      <strong><FileText size={13} />{file.file_name}</strong>
-                      <span>{file.file_path}</span>
-                    </div>
-                  </td>
-                  <td><StatusBadge status={file.status} /></td>
-                  <td>{formatBytes(file.file_size)}</td>
-                  <td className="wrap-cell error-cell">
-                    {file.error_message || (file.exists ? "-" : "文件不存在")}
-                  </td>
-                  <td>{formatTime(file.updated_at)}</td>
-                </tr>
-              ))}
-              {(!files || files.length === 0) && (
-                <tr><td colSpan={6}>{showOnlyProblemFiles ? "当前没有问题文件" : "暂无文件明细"}</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+        <ul className="detail-file-list">
+          {files?.map((file) => {
+            const error = file.error_message || (!file.exists ? "文件不存在" : "");
+            return (
+              <li className="detail-file-item" key={`${item.manga_id}-${file.pic_index}`}>
+                <div className="detail-file-topline">
+                  <span className="detail-file-index mono">{file.pic_index}</span>
+                  <strong className="detail-file-name"><FileText size={14} /><span>{file.file_name || `图片 ${file.pic_index}`}</span></strong>
+                  <StatusBadge status={file.status} />
+                </div>
+                <div className="detail-file-meta">
+                  <span>{formatBytes(file.file_size)}</span>
+                  <span>更新于 {formatTime(file.updated_at)}</span>
+                </div>
+                {error && <p className="detail-file-error"><AlertTriangle size={13} /><span>{error}</span></p>}
+                <details className="detail-file-path">
+                  <summary>查看文件路径</summary>
+                  <span>{file.file_path || "尚未生成文件路径"}</span>
+                </details>
+              </li>
+            );
+          })}
+        </ul>
+        {(!files || files.length === 0) && (
+          <p className="detail-files-empty" role="status">{detailLoading ? "正在加载文件明细…" : showOnlyProblemFiles ? "当前没有问题文件" : "暂无文件明细"}</p>
+        )}
+      </section>
     </aside>
   );
 }

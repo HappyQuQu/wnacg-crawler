@@ -10,7 +10,8 @@ from pathlib import Path
 from loguru import logger
 
 from backend.app.core.config import get_settings
-from backend.app.crawler.block_detector import classify_block, is_blocked
+from backend.app.core.errors import ImageHTTPError
+from backend.app.crawler.block_detector import BlockResult, classify_block, is_blocked
 from backend.app.crawler.browser_fetcher import browser_manager
 from backend.app.crawler.downloader import BlockedByCloudflareError, downloader
 
@@ -90,7 +91,7 @@ def _mark_blocked(domain: str, block_type_hint: str | None = None) -> None:
 
 
 def _broadcast_block_alert(
-    domain: str, block_result: "BlockResult", backoff: float
+    domain: str, block_result: BlockResult, backoff: float
 ) -> None:
     from backend.app.api.notification import broadcast_block_alert
 
@@ -196,6 +197,8 @@ async def smart_fetch_bytes(url: str, referer: str | None = None) -> bytes:
     except BlockedByCloudflareError:
         logger.info("CF on image, switching to browser: {}", url)
         _mark_blocked(domain, block_type_hint="cloudflare")
+    except ImageHTTPError:
+        raise
     except Exception as exc:
         logger.info(
             "Image HTTP failed ({}), switching to browser: {}",
@@ -209,6 +212,8 @@ async def smart_fetch_bytes(url: str, referer: str | None = None) -> bytes:
         try:
             return await browser_manager.fetch_bytes(url, referer=referer)
         except Exception as exc:
+            if isinstance(exc, ImageHTTPError) and exc.status_code == 403:
+                raise
             logger.warning(
                 "Browser image attempt {}/{} failed: {} - {}",
                 attempt + 1, max_browser_attempts, url, exc,

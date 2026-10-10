@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import zipfile
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -10,9 +9,11 @@ from backend.app.core.config import get_settings
 from backend.app.core.paths import manga_dir, safe_filename, zip_path
 from backend.app.core.time import local_isoformat
 from backend.app.crawler.downloader import image_extension
+from backend.app.crawler.images import find_valid_image_path
 from backend.app.db.database import SessionLocal
 from backend.app.db.models import DownloadFile, DownloadTask, MangaInfo, MangaPicPage
 from backend.app.db.repository import FileRepository, MangaRepository, TaskRepository, task_to_dict
+from backend.app.services.archive_service import create_zip
 
 ACTIVE_TASK_STATUSES = {"pending", "queued", "running", "paused"}
 MangaPicPages = list[MangaPicPage]
@@ -132,7 +133,9 @@ class LibraryService:
             return summary
 
         target.parent.mkdir(parents=True, exist_ok=True)
-        await asyncio.to_thread(_create_zip, source, target)
+        await asyncio.to_thread(
+            create_zip, source, target, [Path(row["file_path"]) for row in summary["files"]]
+        )
         refreshed = await self.get(manga_id)
         if refreshed is None:
             return None
@@ -232,14 +235,24 @@ class LibraryService:
         rows = self._file_rows_sync(info, pic_pages, files)
         if not validate:
             return rows
+        pages_by_index = {page.pic_index: page for page in pic_pages}
 
         def _validate_row(row: FileRow) -> FileRow:
             path = Path(row["file_path"])
+            page = pages_by_index.get(row["pic_index"])
+            existing = find_valid_image_path(
+                _expected_file_path(info, page, row["pic_index"]), path
+            )
+            if existing is not None:
+                path = existing
+                row["file_path"] = str(path)
+                row["file_name"] = path.name
+                row["exists"] = True
             if not path.exists():
                 row["status"] = "missing"
                 row["file_size"] = 0
                 row["error_message"] = "文件不存在"
-            elif not _is_valid_image_file(path):
+            elif existing is None:
                 row["status"] = "invalid"
                 row["file_size"] = path.stat().st_size
                 row["error_message"] = "图片校验失败"
@@ -318,33 +331,6 @@ def _expected_file_path(info: MangaInfo, page: MangaPicPage | None, pic_index: i
         safe_pic_num = safe_filename(page.pic_num, str(page.pic_index))
         filename = f"{page.pic_index:04d}_{safe_pic_num}{ext}"
     return manga_dir(Path(settings.download_path), info.id, title) / filename
-
-
-def _is_valid_image_file(path: Path) -> bool:
-    try:
-        size = path.stat().st_size
-        if size <= 5 * 1024:
-            return False
-        with path.open("rb") as f:
-            header = f.read(32)
-        signatures = (
-            b"\xff\xd8\xff",
-            b"\x89PNG\r\n\x1a\n",
-            b"GIF87a",
-            b"GIF89a",
-            b"RIFF",
-            b"BM",
-        )
-        return any(header.startswith(sig) for sig in signatures)
-    except OSError:
-        return False
-
-
-def _create_zip(source: Path, target: Path) -> None:
-    with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as zf:
-        for file in sorted(source.iterdir()):
-            if file.is_file() and not file.name.startswith("."):
-                zf.write(file, file.name)
 
 
 library_service = LibraryService()

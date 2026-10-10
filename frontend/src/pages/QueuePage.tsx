@@ -15,6 +15,8 @@ import type { Task, LogItem, QueueFilter } from "../types";
 import { stageLabel, formatTime, canPause, canResume, canCancel, canRetry, formatLogMessage, formatLogDetails, taskDisplayName, progressPercent, formatDuration } from "../utils";
 import { Info, ProgressBar, StatusBadge, LogLevelBadge } from "../components/Common";
 import { SkeletonTable } from "../components/Skeleton";
+import { DetailSummary } from "../components/DetailSummary";
+import { TaskRealtimeLogs } from "../components/TaskRealtimeLogs";
 
 const tabs: { key: QueueFilter | "logs"; label: string }[] = [
   { key: "all", label: "全部" },
@@ -101,7 +103,7 @@ export function QueuePage({
   const isLogsTab = activeTab === "logs";
 
   return (
-    <div className="queue-grid">
+    <div className={`queue-grid ${isLogsTab ? "queue-logs-view" : ""}`}>
       <section className="panel task-list-panel">
         <div className="panel-header">
           <div>
@@ -165,7 +167,7 @@ export function QueuePage({
         )}
       </section>
 
-      {!isLogsTab && <TaskDetailPanel task={selectedTask} logItems={logItems} loading={loading} noImageMode={noImageMode} onControl={onControl} onRetry={onRetry} />}
+      {!isLogsTab && <TaskDetailPanel task={selectedTask} loading={loading} noImageMode={noImageMode} onControl={onControl} onRetry={onRetry} />}
     </div>
   );
 }
@@ -281,91 +283,65 @@ function CardView({
 }
 
 function TaskDetailPanel({
-  task, logItems, loading, noImageMode, onControl, onRetry,
+  task, loading, noImageMode, onControl, onRetry,
 }: {
   task: Task | null;
-  logItems: LogItem[];
   loading: boolean;
   noImageMode: boolean;
   onControl: (task: Task, action: "pause" | "resume" | "cancel") => Promise<void>;
   onRetry: (task: Task) => Promise<void>;
 }) {
-  const taskLogs = task
-    ? logItems.filter((l) => l.manga_id === task.manga_id || l.task_id === task.task_id).slice(0, 6)
-    : [];
   const pct = task ? progressPercent(task.progress_current, task.progress_total) : 0;
   const isActive = task && ["running", "queued"].includes(task.status);
 
   return (
-    <aside className="panel detail queue-detail">
-      <div className="panel-header compact">
-        <div>
-          <span className="eyebrow">任务详情</span>
-          <h2>{task ? taskDisplayName(task) : "未选择"}</h2>
-          <p className="mono">{task?.manga_id ?? "从左侧选择一个任务"}</p>
-        </div>
-        {task && <StatusBadge status={task.status} />}
+    <aside className="panel detail queue-detail" aria-label="任务详情">
+      <div className="detail-panel-header">
+        <h2>任务详情</h2>
       </div>
 
-      {task?.cover_url && (
-        <div className="detail-cover-wrap">
-          <div className={`detail-cover ${noImageMode ? "no-image-blur" : ""}`}>
-            <img src={task.cover_url} alt={task.title || task.manga_id} />
+      <div className="detail-scroll-body">
+        {task ? <DetailSummary title={taskDisplayName(task)} mangaId={task.manga_id} coverUrl={task.cover_url} status={task.status} noImageMode={noImageMode} /> : <p className="detail-files-empty">从左侧选择一个任务查看详情</p>}
+
+        <div className="detail-progress-hero">
+          <div className="detail-progress-bar-wrap">
+            <ProgressBar value={task ? (task.progress_total > 0 ? task.progress_current / task.progress_total : 0) : 0} />
+          </div>
+          <div className="detail-progress-info">
+            <span className="detail-progress-pct">{pct}%</span>
+            <span className="detail-progress-count">
+              {task && task.progress_total > 0 ? `${task.progress_current} / ${task.progress_total} 张图片` : "等待开始"}
+            </span>
           </div>
         </div>
-      )}
 
-      <div className="detail-progress-hero">
-        <div className="detail-progress-bar-wrap">
-          <ProgressBar value={task ? (task.progress_total > 0 ? task.progress_current / task.progress_total : 0) : 0} />
+        {task && <TaskRealtimeLogs key={task.task_id} taskId={task.task_id} />}
+
+        <div className="detail-grid">
+          <Info label="阶段" value={task ? stageLabel(task.stage) : "-"} />
+          <Info label="来源" value={task?.source ?? "-"} />
+          <Info label="重试" value={task ? (task.retry_count > 0 ? `${task.retry_count} 次` : "无") : "-"} />
+          <Info label="已用时" value={task ? formatDuration(task.created_at, task.updated_at) : "-"} />
+          <Info label="创建时间" value={formatTime(task?.created_at)} />
+          <Info label="更新时间" value={formatTime(task?.updated_at)} />
         </div>
-        <div className="detail-progress-info">
-          <span className="detail-progress-pct">{pct}%</span>
-          <span className="detail-progress-count">
-            {task && task.progress_total > 0 ? `${task.progress_current} / ${task.progress_total} 张图片` : "等待开始"}
-          </span>
-        </div>
+
+        {task?.last_error && (
+          <div className="notice danger"><AlertTriangle size={14} /><span>{task.last_error}</span></div>
+        )}
+
       </div>
 
-      <div className="detail-grid">
-        <Info label="阶段" value={task ? stageLabel(task.stage) : "-"} />
-        <Info label="来源" value={task?.source ?? "-"} />
-        <Info label="重试" value={task ? (task.retry_count > 0 ? `${task.retry_count} 次` : "无") : "-"} />
-        <Info label="已用时" value={task ? formatDuration(task.created_at, task.updated_at) : "-"} />
-        <Info label="创建时间" value={formatTime(task?.created_at)} />
-        <Info label="更新时间" value={formatTime(task?.updated_at)} />
-      </div>
-
-      {task?.last_error && (
-        <div className="notice danger"><AlertTriangle size={14} /><span>{task.last_error}</span></div>
-      )}
-
-      <div className="task-actions">
-        <button className="button secondary" disabled={!task || !canPause(task) || loading} onClick={() => task && void onControl(task, "pause")}><Pause size={15} />暂停</button>
-        <button className="button secondary" disabled={!task || !canResume(task) || loading} onClick={() => task && void onControl(task, "resume")}><Play size={15} />继续</button>
-        <button className="button secondary danger-button" disabled={!task || !canCancel(task) || loading} onClick={() => task && void onControl(task, "cancel")}><XCircle size={15} />取消</button>
-        <button className="button primary" disabled={!task || !canRetry(task) || loading} onClick={() => task && void onRetry(task)}><RotateCcw size={15} />重试</button>
-        {task && <button className="button secondary" onClick={() => window.open(`https://www.wnacg.com/photos-index-aid-${task.manga_id}.html`, "_blank")}><ExternalLink size={15} />原始链接</button>}
-      </div>
-
-      {taskLogs.length > 0 && (
-        <div className="detail-logs">
-          <div className="detail-logs-header"><span className="eyebrow">最近动态</span></div>
-          <div className="detail-logs-list">
-            {taskLogs.map((log) => (
-              <div className="detail-log-item" key={log.id}>
-                <div className={`detail-log-dot ${log.level === "error" ? "danger" : log.level === "warning" ? "warning" : "info"}`} />
-                <div className="detail-log-body">
-                  <span className="detail-log-msg">{log.message || log.event}</span>
-                  <span className="detail-log-time">{formatTime(log.created_at)}</span>
-                </div>
-              </div>
-            ))}
-          </div>
+      <div className="detail-footer">
+        <div className="task-actions">
+          <button className="button secondary" disabled={!task || !canPause(task) || loading} onClick={() => task && void onControl(task, "pause")}><Pause size={15} />暂停</button>
+          <button className="button secondary" disabled={!task || !canResume(task) || loading} onClick={() => task && void onControl(task, "resume")}><Play size={15} />继续</button>
+          <button className="button secondary danger-button" disabled={!task || !canCancel(task) || loading} onClick={() => task && void onControl(task, "cancel")}><XCircle size={15} />取消</button>
+          <button className="button primary" disabled={!task || !canRetry(task) || loading} onClick={() => task && void onRetry(task)}><RotateCcw size={15} />重试</button>
+          {task && <button className="button secondary" onClick={() => window.open(`https://www.wnacg.com/photos-index-aid-${task.manga_id}.html`, "_blank")}><ExternalLink size={15} />原始链接</button>}
         </div>
-      )}
-
-      {isActive && <p className="detail-hint">任务进行中，暂停或取消会立即生效</p>}
+        {isActive && <p className="detail-hint">任务进行中，可暂停或取消</p>}
+      </div>
     </aside>
   );
 }

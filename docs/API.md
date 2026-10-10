@@ -445,6 +445,10 @@ Request：
 {
   "download_path": "/data",
   "is_zip": true,
+  "enable_image_compression": false,
+  "image_max_size_kb": 1024,
+  "keep_original_images": true,
+  "allow_image_resize": false,
   "max_thread": 6,
   "re_count": 5,
   "request_delay_ms": 1200,
@@ -461,6 +465,19 @@ Request：
 ```
 
 `max_thread` 控制单个漫画在 `downloading` 阶段的图片并发 worker 数，取值范围 1 到 20。批量任务会并发启动多个漫画任务，但所有 HTTP 请求仍共享全局请求间隔配置。
+
+图片压缩配置由 GET 返回，可通过 POST 部分更新并持久化、热重载：
+
+| 字段 | 默认值 | 含义 |
+| --- | --- | --- |
+| `enable_image_compression` | `false` | 仅处理新下载且超过上限的图片 |
+| `image_max_size_kb` | `1024` | 目标大小上限，单位为 1024 字节，整数范围 1～102400 |
+| `keep_original_images` | `true` | 为实际发生压缩的图片保存原始字节副本 |
+| `allow_image_resize` | `false` | 编码质量调整未达到上限时，允许按比例缩小分辨率 |
+
+未启用压缩时保持原始字节及格式。启用后优先调整编码质量或颜色数；不能达到上限时保存较小的有效结果并记录 warning，编码异常或输出校验失败时回退原图。动画或多帧图片保持原样。BMP 和单帧 GIF 在需要压缩时可转换为 PNG。
+
+原图目录为 `Original/[漫画 ID] 标题`，与 `Manga/[漫画 ID] 标题` 分离，原图不进入下载 ZIP。原图副本写入失败时，在 Manga 保存原图并跳过压缩。有效原图副本和历史有效下载文件均不自动重写；设置变化不会自动重压已有资料库。数据库记录实际输出文件的路径、格式对应的文件名及大小，ZIP 使用这些记录打包。
 
 Response data：
 
@@ -625,9 +642,16 @@ task_failed
 task_controlled
 legacy_task_failure
 manga_info_resolved
+image_resolve_started
+image_url_resolved
 image_urls_resolved
 image_url_resolve_failed
+image_download_started
+image_download_completed
+image_file_reused
 image_download_failed
+problem_image_retry_started
+problem_image_retry_completed
 retry_failed_images_started
 retry_failed_images_finished
 problem_image_retry_failed
@@ -642,6 +666,7 @@ problem_image_retry_failed
 ```text
 task_created
 task_progress
+task_log
 task_status_changed
 task_error
 library_updated
@@ -662,6 +687,27 @@ config_updated
   "message": "图片下载中"
 }
 ```
+
+任务日志消息在日志持久化后推送，`item` 与 `/api/logs` 返回的单条记录结构一致：
+
+```json
+{
+  "type": "task_log",
+  "item": {
+    "id": 123,
+    "level": "info",
+    "event": "image_resolve_started",
+    "message": "正在解析第 7/204 张图片",
+    "manga_id": "123456",
+    "task_id": "task_01",
+    "stage": "resolving_images",
+    "details": {"page_index": 7},
+    "created_at": "2026-10-10T14:00:00+08:00"
+  }
+}
+```
+
+右侧实时日志通过 `GET /api/logs?task_id=task_01&limit=200` 加载当前任务的历史，按最新优先展示并以 WebSocket 接收新增记录。每 5 秒补取历史，覆盖断线期间遗漏的日志；筛选、详情展开不会修改任务状态。
 
 错误消息：
 

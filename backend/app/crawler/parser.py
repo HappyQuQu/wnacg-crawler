@@ -1,6 +1,7 @@
 import re
 from dataclasses import dataclass
-from urllib.parse import urljoin
+from html import unescape
+from urllib.parse import urljoin, urlsplit
 
 from bs4 import BeautifulSoup
 
@@ -101,14 +102,27 @@ class MangaParser:
             )
             if not match:
                 return None
-            src = match.group(1)
+            src = unescape(match.group(1)).strip()
         else:
-            src = str(image["src"])
+            src = str(image["src"]).strip()
         if not src:
             return None
         if src.startswith("//"):
-            return f"https:{src}"
-        return urljoin(base_url, src) if base_url else src
+            src = f"https:{src}"
+        try:
+            source = urlsplit(src)
+            if source.scheme and (
+                source.scheme not in {"http", "https"} or not source.hostname
+            ):
+                return None
+            resolved = urljoin(base_url, src) if base_url else src
+            parsed = urlsplit(resolved)
+        except ValueError:
+            return None
+        if base_url or parsed.scheme:
+            if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+                return None
+        return resolved
 
 
 manga_parser = MangaParser()

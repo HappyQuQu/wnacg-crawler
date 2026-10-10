@@ -125,7 +125,8 @@ export type SystemAlertMessage = {
   blocked_domains: string[];
 };
 
-export type WsMessage = TaskProgressMessage | SystemAlertMessage;
+export type TaskLogMessage = { type: "task_log"; item: LogItem };
+export type WsMessage = TaskProgressMessage | SystemAlertMessage | TaskLogMessage;
 
 export type WsStatus = "connecting" | "connected" | "fallback";
 export type ViewKey = "dashboard" | "tasks" | "library" | "settings";
@@ -154,6 +155,10 @@ export type LogList = {
 export type AppConfig = {
   download_path: string;
   is_zip: boolean;
+  enable_image_compression: boolean;
+  image_max_size_kb: number;
+  keep_original_images: boolean;
+  allow_image_resize: boolean;
   max_thread: number;
   request_delay_ms: number;
   timeout_seconds: number;

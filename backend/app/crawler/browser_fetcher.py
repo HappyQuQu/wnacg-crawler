@@ -10,6 +10,7 @@ from loguru import logger
 from playwright.async_api import Browser, BrowserContext, Playwright, async_playwright
 
 from backend.app.core.config import get_settings
+from backend.app.core.errors import ImageHTTPError
 from backend.app.crawler.block_detector import is_cloudflare_challenge
 
 _BROWSER_UA = (
@@ -91,7 +92,9 @@ class BrowserManager:
                 "viewport": viewport,
                 "extra_http_headers": {
                     "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-                    "sec-ch-ua": '"Google Chrome";v="125", "Chromium";v="125", "Not.A/Brand";v="24"',
+                    "sec-ch-ua": (
+                        '"Google Chrome";v="125", "Chromium";v="125", "Not.A/Brand";v="24"'
+                    ),
                     "sec-ch-ua-mobile": "?0",
                     "sec-ch-ua-platform": '"Windows"',
                 },
@@ -188,9 +191,7 @@ class BrowserManager:
                 raise RuntimeError(f"Browser image fetch failed: {url}") from exc
 
             if resp.status >= 400:
-                raise RuntimeError(
-                    f"Browser image fetch HTTP {resp.status}: {url}"
-                )
+                raise ImageHTTPError(resp.status, url)
 
             await self._save_cookies(context)
             return await resp.body()
