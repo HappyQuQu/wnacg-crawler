@@ -7,12 +7,15 @@ services:
       - ./data:/app/data
       - ./config:/app/config
     shm_size: "2gb"
+    env_file:
+      - path: .env
+        required: false
     environment:
       - PYTHONUNBUFFERED=1
-      - FETCH_MODE=auto
-      - ENABLE_BROWSER=true
-      - ENABLE_STEALTH=false
-      - BROWSER_HEADLESS=true
+      - WNACG_FETCH_MODE=${WNACG_FETCH_MODE:-auto}
+      - WNACG_ENABLE_BROWSER=${WNACG_ENABLE_BROWSER:-true}
+      - WNACG_ENABLE_STEALTH=${WNACG_ENABLE_STEALTH:-false}
+      - WNACG_BROWSER_HEADLESS=${WNACG_BROWSER_HEADLESS:-true}
     healthcheck:
       test:
         [

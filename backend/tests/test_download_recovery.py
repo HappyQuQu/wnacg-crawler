@@ -134,6 +134,40 @@ def test_corrupt_images_are_rejected(tmp_path, data):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["auto", "http"])
+@pytest.mark.parametrize("kind", ["text", "bytes"])
+async def test_disabled_browser_or_http_mode_never_falls_back(
+    monkeypatch, fast_settings, mode, kind,
+):
+    monkeypatch.setattr(fast_settings, "fetch_mode", mode)
+    monkeypatch.setattr(fast_settings, "enable_browser", mode == "http")
+    http = AsyncMock(side_effect=BlockedByCloudflareError("test blocked response"))
+    browser = AsyncMock()
+    monkeypatch.setattr(smart_fetcher.downloader, f"get_{kind}", http)
+    monkeypatch.setattr(smart_fetcher.browser_manager, "fetch" if kind == "text" else "fetch_bytes",
+                        browser)
+    fetch = smart_fetcher.smart_fetch if kind == "text" else smart_fetcher.smart_fetch_bytes
+    with pytest.raises(BlockedByCloudflareError):
+        await fetch("https://example.test/resource")
+    http.assert_awaited_once()
+    browser.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["text", "bytes"])
+async def test_browser_mode_rejects_disabled_browser(monkeypatch, fast_settings, kind):
+    monkeypatch.setattr(fast_settings, "fetch_mode", "browser")
+    monkeypatch.setattr(fast_settings, "enable_browser", False)
+    browser = AsyncMock()
+    monkeypatch.setattr(smart_fetcher.browser_manager, "fetch" if kind == "text" else "fetch_bytes",
+                        browser)
+    fetch = smart_fetcher.smart_fetch if kind == "text" else smart_fetcher.smart_fetch_bytes
+    with pytest.raises(RuntimeError, match="浏览器抓取已关闭"):
+        await fetch("https://example.test/resource")
+    browser.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_image_403_skips_http_retries(monkeypatch, fast_settings):
     fast_settings.crawler_max_retry = 3
     client = SimpleNamespace(get=AsyncMock(return_value=SimpleNamespace(status_code=403)))

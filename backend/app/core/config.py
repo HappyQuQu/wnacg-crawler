@@ -1,5 +1,4 @@
 import json
-import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -58,12 +57,22 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="WNACG_",
         env_nested_delimiter="__",
+        env_file=".env",
+        env_file_encoding="utf-8",
         extra="ignore",
     )
 
 
+class _ConfigPathSettings(BaseSettings):
+    config_path: Path = Path("./config/config.local.json")
+
+    model_config = SettingsConfigDict(
+        env_prefix="WNACG_", env_file=".env", env_file_encoding="utf-8", extra="ignore",
+    )
+
+
 def get_config_path() -> Path:
-    return Path(os.getenv("WNACG_CONFIG_PATH", "./config/config.local.json"))
+    return _ConfigPathSettings().config_path
 
 
 def load_file_config() -> dict[str, Any]:
@@ -88,7 +97,12 @@ def save_file_config(data: dict[str, Any]) -> Path:
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings(**load_file_config())
+    file_config = load_file_config()
+    overrides = Settings().model_dump(exclude_unset=True)
+    merged = {**file_config, **overrides}
+    if "proxy" in overrides:
+        merged["proxy"] = {**file_config.get("proxy", {}), **overrides["proxy"]}
+    return Settings(**merged)
 
 
 def reload_settings() -> Settings:

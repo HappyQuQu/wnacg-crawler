@@ -216,7 +216,9 @@ extension/
 alembic upgrade head
 ```
 
-迁移默认读取 `WNACG_CONFIG_PATH` 指向的本地配置；如果没有配置文件，则使用 `WNACG_DB_PATH` 或默认 `./config/data.sqlite`。
+迁移与后端使用同一套配置加载逻辑，自动读取项目根目录 `.env`。
+`WNACG_CONFIG_PATH` 指定 JSON 配置文件，`WNACG_DB_PATH` 可覆盖数据库路径。
+优先级为：系统环境变量 > `.env` > JSON 配置 > 内置默认值。
 
 当前初始迁移：
 

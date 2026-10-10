@@ -144,10 +144,12 @@ async def smart_fetch(url: str, referer: str | None = None) -> str:
     domain = _extract_domain(url)
 
     if mode == "browser":
+        if not settings.enable_browser:
+            raise RuntimeError("浏览器抓取已关闭，无法使用 browser 模式")
         await polite_delay(domain)
         return await browser_manager.fetch(url, referer=referer)
 
-    if mode == "http":
+    if mode == "http" or not settings.enable_browser:
         await polite_delay(domain)
         return await downloader.get_text(url, referer=referer)
 
@@ -187,7 +189,11 @@ async def smart_fetch(url: str, referer: str | None = None) -> str:
 async def smart_fetch_bytes(url: str, referer: str | None = None) -> bytes:
     settings = get_settings()
     if settings.fetch_mode == "browser":
+        if not settings.enable_browser:
+            raise RuntimeError("浏览器抓取已关闭，无法使用 browser 模式")
         return await browser_manager.fetch_bytes(url, referer=referer)
+    if settings.fetch_mode == "http" or not settings.enable_browser:
+        return await downloader.get_bytes(url, referer=referer)
 
     domain = _extract_domain(url)
     try:

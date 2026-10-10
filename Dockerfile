@@ -21,7 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xdg-utils wget ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml README.md ./
+COPY pyproject.toml README.md LICENSE ./
 COPY backend ./backend
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 

@@ -63,16 +63,17 @@ def test_library_reads_database_and_files():
     assert list_response.status_code == 200
     items = list_response.json()["data"]["items"]
     assert len(items) == 1
-    assert items[0]["status"] == "completed"
+    assert items[0]["status"] == "partial"
     assert items[0]["valid_files"] == 1
 
     verify_response = client.post(f"/api/library/{manga_id}/verify")
     assert verify_response.status_code == 200
-    assert verify_response.json()["data"]["status"] == "completed"
+    assert verify_response.json()["data"]["status"] == "partial"
 
     zip_response = client.post(f"/api/library/{manga_id}/zip")
     assert zip_response.status_code == 200
     assert zip_response.json()["data"]["zip_exists"] is True
+    assert zip_response.json()["data"]["status"] == "completed"
 
 
 def test_library_retry_failed_files_downloads_problem_images(monkeypatch):

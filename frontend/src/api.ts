@@ -107,6 +107,6 @@ export async function saveConfigApi(config: Partial<AppConfig>): Promise<AppConf
   });
 }
 
-export async function generateExtensionTokenApi(): Promise<AppConfig> {
-  return api<AppConfig>("/api/config/extension-token", { method: "POST" });
+export async function generateExtensionTokenApi(): Promise<AppConfig & { message: string }> {
+  return api("/api/config/extension-token", { method: "POST" });
 }

@@ -2,6 +2,9 @@
 
 ## Docker Compose
 
+需要 Docker Compose 2.24.0 或更新版本，支持可选的 `.env` 配置文件，参见
+[Compose 官方说明](https://docs.docker.com/reference/compose-file/services/#required)。
+
 构建并启动：
 
 ```bash
@@ -73,3 +76,27 @@ Python stage -> 安装 FastAPI 后端并复制 frontend/dist
 - 如果宿主机 `8080` 被本地开发服务占用，先停止本地 uvicorn，或修改 `docker-compose.yml` 的端口映射。
 - 如果在容器里使用宿主机代理，代理地址不要填 `127.0.0.1`，应使用 Docker 可访问的宿主机地址，例如 Docker Desktop 下的 `host.docker.internal`。
 - `config/config.local.json` 是本地配置文件，不提交版本控制。
+
+## 环境配置
+
+不创建 `.env` 也能启动。需要自定义配置时，可复制 `.env.example` 到 `.env`，再编辑需要的项。
+Compose 会将 `.env` 中的变量传入容器；浏览器参数也支持用同名系统环境变量覆盖：
+
+```bash
+WNACG_ENABLE_BROWSER=false docker compose up -d --build
+```
+
+所有后端变量使用 `WNACG_` 前缀，包括 `WNACG_FETCH_MODE`、`WNACG_ENABLE_BROWSER`、
+`WNACG_ENABLE_STEALTH` 和 `WNACG_BROWSER_HEADLESS`。修改 Compose 环境变量后，
+运行 `docker compose up -d` 重新创建容器，使新值生效。
+
+后端配置优先级为：系统环境变量 > `.env` > `config/config.local.json` > 内置默认值。
+嵌套代理设置逐字段合并，例如 `WNACG_PROXY__PORT` 只覆盖端口，保留 JSON 中的地址和用户名。
+容器内的文件路径按 `/app` 工作目录解释，路径应对应挂载后的容器目录。
+
+后台保存配置只更新提交的字段，保留已有爬虫参数和其他配置。环境变量优先控制的字段
+会通过保存响应的 `overridden_fields` 和页面提示说明；取消环境覆盖并重启后，JSON 中的值才生效。
+`.env.example` 中可由后台修改的参数默认注释，避免复制示例后锁住后台设置。
+
+`WNACG_ENABLE_BROWSER=false` 时，`auto` 模式只使用 HTTP，不再回退到浏览器；
+同时设置 `WNACG_FETCH_MODE=browser` 会提示配置冲突。`http` 模式也不会启动浏览器。

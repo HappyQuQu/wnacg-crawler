@@ -437,7 +437,9 @@ retry_failed_images:fixed=2;failed=0;processed=2;re_resolved=1
 
 ### POST /api/config
 
-保存配置。
+保存配置，只更新提交的字段，并保留其他已有配置；嵌套代理设置也支持逐字段更新。
+系统环境变量和 `.env` 的优先级高于 JSON。响应中的 `overridden_fields` 列出
+被环境配置覆盖的提交字段，返回的配置值始终是实际生效值。
 
 Request：
 
@@ -494,7 +496,8 @@ Response data：
 
 ### POST /api/config/extension-token
 
-生成并保存扩展 Token。
+生成并保存扩展 Token。若环境配置固定了 `WNACG_EXTENSION_TOKEN`，响应仍返回实际生效的
+Token，并通过 `overridden_fields: ["extension_token"]` 说明新生成值尚未生效。
 
 Response data：
 

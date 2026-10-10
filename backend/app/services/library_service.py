@@ -13,7 +13,7 @@ from backend.app.crawler.images import find_valid_image_path
 from backend.app.db.database import SessionLocal
 from backend.app.db.models import DownloadFile, DownloadTask, MangaInfo, MangaPicPage
 from backend.app.db.repository import FileRepository, MangaRepository, TaskRepository, task_to_dict
-from backend.app.services.archive_service import create_zip
+from backend.app.services.archive_service import create_zip, is_complete_zip
 
 ACTIVE_TASK_STATUSES = {"pending", "queued", "running", "paused"}
 MangaPicPages = list[MangaPicPage]
@@ -106,9 +106,19 @@ class LibraryService:
                 )
             total = len(rows)
             valid_count = len([row for row in rows if row["status"] == "valid"])
-            if total:
-                status = "completed" if valid_count == total else "partial"
-                await manga_repo.update_info_status(manga_id, status, pic_count=total)
+            complete = total > 0 and valid_count == total
+            error = "" if complete else f"图片不完整：有效 {valid_count}/{total}"
+            if complete and get_settings().is_zip:
+                archive = zip_path(
+                    Path(get_settings().download_path), info.id, info.title or info.id,
+                )
+                complete = await asyncio.to_thread(
+                    is_complete_zip, archive, [Path(row["file_path"]) for row in rows],
+                )
+                if not complete:
+                    error = "ZIP 不存在、不完整或校验失败"
+            status = "completed" if complete else "partial"
+            await manga_repo.update_info_status(manga_id, status, pic_count=total, error=error)
 
         summary = await self.get(manga_id)
         if summary is not None:
@@ -136,6 +146,8 @@ class LibraryService:
         await asyncio.to_thread(
             create_zip, source, target, [Path(row["file_path"]) for row in summary["files"]]
         )
+        async with SessionLocal() as session:
+            await MangaRepository(session).update_info_status(manga_id, "completed")
         refreshed = await self.get(manga_id)
         if refreshed is None:
             return None
@@ -194,9 +206,13 @@ class LibraryService:
         missing_files = max(total_files - valid_files - failed_files, 0)
         completeness = round(valid_files / total_files, 4) if total_files else 0
         task_status = task.status if task else None
-        status = self._computed_status(info.status, task_status, total_files, valid_files)
         download_dir = manga_dir(Path(get_settings().download_path), info.id, info.title or info.id)
         archive_path = zip_path(Path(get_settings().download_path), info.id, info.title or info.id)
+        archive_exists = archive_path.is_file() and archive_path.stat().st_size > 0
+        zip_ready = not get_settings().is_zip or archive_exists
+        status = self._computed_status(
+            info.status, task_status, total_files, valid_files, zip_ready,
+        )
         payload: dict[str, Any] = {
             "manga_id": info.id,
             "title": info.title,
@@ -215,8 +231,8 @@ class LibraryService:
             "download_dir": str(download_dir),
             "download_dir_exists": download_dir.exists(),
             "zip_path": str(archive_path),
-            "zip_exists": archive_path.exists(),
-            "zip_size": archive_path.stat().st_size if archive_path.exists() else 0,
+            "zip_exists": archive_exists,
+            "zip_size": archive_path.stat().st_size if archive_exists else 0,
             "last_error": info.last_error or None,
             "created_at": local_isoformat(info.created_at),
             "updated_at": local_isoformat(info.updated_at),
@@ -275,9 +291,8 @@ class LibraryService:
     ) -> FileRows:
         files_by_index = {file.pic_index: file for file in files}
         pages_by_index = {page.pic_index: page for page in pic_pages}
-        expected_indexes = sorted(set(files_by_index) | set(pages_by_index))
-        if not expected_indexes and info.pic_count:
-            expected_indexes = list(range(1, info.pic_count + 1))
+        expected_count = max([info.pic_count, *files_by_index, *pages_by_index])
+        expected_indexes = range(1, expected_count + 1)
 
         rows: FileRows = []
         for pic_index in expected_indexes:
@@ -311,12 +326,13 @@ class LibraryService:
         task_status: str | None,
         total_files: int,
         valid_files: int,
+        zip_ready: bool,
     ) -> str:
         if task_status in ACTIVE_TASK_STATUSES:
             return task_status
-        if total_files and valid_files == total_files:
-            return "completed"
         if total_files and valid_files != total_files:
+            return "partial"
+        if manga_status == "completed" and (not total_files or not zip_ready):
             return "partial"
         return manga_status
 

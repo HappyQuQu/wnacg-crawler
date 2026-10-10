@@ -183,7 +183,7 @@ function App() {
   async function handleSaveConfig() {
     await withLoading(async () => {
       const data = await config.save();
-      if (data) showToast(data.message, "success");
+      if (data) showToast(data.message, data.overridden_fields?.length ? "warning" : "success");
     });
   }
 
@@ -197,6 +197,10 @@ function App() {
         setConfirmState((s) => ({ ...s, open: false }));
         void withLoading(async () => {
           const data = await config.generateToken();
+          if (data?.overridden_fields?.includes("extension_token")) {
+            showToast(data.message, "warning");
+            return;
+          }
           if (data?.extension_token) {
             try {
               await navigator.clipboard.writeText(data.extension_token);

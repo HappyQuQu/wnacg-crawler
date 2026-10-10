@@ -13,5 +13,6 @@
     "package:extension": "bash scripts/package-extension.sh",
     "typecheck:extension": "npm run typecheck -w extension",
     "validate": "bash scripts/validate.sh"
-  }
+  },
+  "license": "MIT"
 }

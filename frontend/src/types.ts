@@ -164,6 +164,7 @@ export type AppConfig = {
   timeout_seconds: number;
   extension_token: string;
   extension_token_set: boolean;
+  overridden_fields?: string[];
   config_path: string;
   proxy: {
     is_proxy: boolean;

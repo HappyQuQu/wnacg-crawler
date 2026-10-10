@@ -5,30 +5,12 @@ from backend.app.core.config import (
     Settings,
     get_config_path,
     get_settings,
+    load_file_config,
     reload_settings,
     save_file_config,
 )
 from backend.app.core.schemas import ConfigUpdateRequest
 from backend.app.crawler.downloader import downloader
-
-PERSISTED_KEYS = {
-    "download_path",
-    "db_path",
-    "is_zip",
-    "enable_image_compression",
-    "image_max_size_kb",
-    "keep_original_images",
-    "allow_image_resize",
-    "max_thread",
-    "re_count",
-    "request_delay_ms",
-    "timeout_seconds",
-    "user_agent",
-    "manga_main_url",
-    "manga_page_url",
-    "extension_token",
-    "proxy",
-}
 
 
 class ConfigService:
@@ -38,35 +20,37 @@ class ConfigService:
 
     async def update(self, payload: ConfigUpdateRequest) -> dict:
         current = get_settings().model_dump(mode="json")
-        patch = payload.model_dump(mode="json", exclude_none=True)
+        patch = payload.model_dump(mode="json", exclude_none=True, exclude_unset=True)
         merged = self._merge(current, patch)
-        settings = Settings(**merged)
-        saved = self._persistable(settings)
+        requested = Settings(**merged).model_dump(mode="json")
+        saved = self._merge(load_file_config(), patch)
         save_file_config(saved)
-        reload_settings()
+        effective = reload_settings()
         await downloader.close()
+        effective_data = effective.model_dump(mode="json")
+        overridden = [
+            key for key in patch if effective_data[key] != requested[key]
+        ]
+        message = "配置已保存并热重载"
+        if overridden:
+            message = "配置已保存；部分字段仍由环境变量或 .env 控制：" + ", ".join(overridden)
         return {
             "status": "saved",
-            "message": "配置已保存并热重载",
-            **self._response(get_settings()),
+            "message": message,
+            "overridden_fields": overridden,
+            **self._response(effective),
         }
 
     async def generate_extension_token(self) -> dict:
         token = token_urlsafe(32)
         request = ConfigUpdateRequest(extension_token=token)
-        result = await self.update(request)
-        result["extension_token"] = token
-        return result
+        return await self.update(request)
 
     def _merge(self, current: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
         merged = {**current, **patch}
         if "proxy" in patch:
             merged["proxy"] = {**current.get("proxy", {}), **patch["proxy"]}
         return merged
-
-    def _persistable(self, settings: Settings) -> dict:
-        data = settings.model_dump(mode="json")
-        return {key: data[key] for key in PERSISTED_KEYS if key in data}
 
     def _response(self, settings: Settings) -> dict:
         data = settings.model_dump(mode="json")
