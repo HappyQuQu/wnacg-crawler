@@ -61,6 +61,7 @@ class ExtensionSubmitManyRequest(BaseModel):
 
 
 class ConfigUpdateRequest(BaseModel):
+    theme: Literal["light", "dark", "system"] | None = None
     download_path: str | None = None
     is_zip: bool | None = None
     enable_image_compression: bool | None = None

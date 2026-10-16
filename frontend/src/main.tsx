@@ -37,6 +37,7 @@ import { useTasks } from "./hooks/useTasks";
 import { useLibrary } from "./hooks/useLibrary";
 import { useLogs } from "./hooks/useLogs";
 import { useConfig } from "./hooks/useConfig";
+import { useTheme } from "./hooks/useTheme";
 import { useWebSocket, useWsTaskProgress, useWsAutoRefresh } from "./hooks/useWebSocket";
 import { useBlockAlerts } from "./hooks/useBlockAlerts";
 
@@ -66,6 +67,7 @@ function App() {
   const library = useLibrary();
   const logs = useLogs();
   const config = useConfig();
+  useTheme(config.config?.theme);
   const wsStatus = useWebSocket();
   const blockAlerts = useBlockAlerts(showToast);
 

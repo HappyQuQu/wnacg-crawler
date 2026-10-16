@@ -445,6 +445,7 @@ Request：
 
 ```json
 {
+  "theme": "system",
   "download_path": "/data",
   "is_zip": true,
   "enable_image_compression": false,
@@ -465,6 +466,8 @@ Request：
   }
 }
 ```
+
+`theme` 控制后台界面外观，可选 `light`、`dark`、`system`，默认 `system`（跟随系统），由 GET 返回并支持 POST 部分更新、持久化和热重载。
 
 `max_thread` 控制单个漫画在 `downloading` 阶段的图片并发 worker 数，取值范围 1 到 20。批量任务会并发启动多个漫画任务，但所有 HTTP 请求仍共享全局请求间隔配置。
 

@@ -1,7 +1,7 @@
 import json
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -17,6 +17,7 @@ class ProxySettings(BaseModel):
 
 class Settings(BaseSettings):
     app_name: str = "WNACG Downloader"
+    theme: Literal["light", "dark", "system"] = "system"
     environment: str = "development"
     host: str = "127.0.0.1"
     port: int = 8080

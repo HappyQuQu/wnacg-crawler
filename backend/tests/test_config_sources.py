@@ -2,6 +2,7 @@ import json
 import os
 
 import pytest
+from pydantic import ValidationError
 
 from backend.app.core.config import get_config_path, get_settings
 from backend.app.core.schemas import ConfigUpdateRequest
@@ -125,3 +126,23 @@ async def test_token_response_reports_active_environment_token(isolated_config, 
 async def test_path_normalization_is_not_reported_as_environment_override(isolated_config):
     result = await config_service.update(ConfigUpdateRequest(download_path="./downloads"))
     assert result["overridden_fields"] == []
+
+
+@pytest.mark.asyncio
+async def test_theme_defaults_to_system(isolated_config):
+    assert (await config_service.get())["theme"] == "system"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("theme", ["light", "dark", "system"])
+async def test_theme_persists_after_reload(isolated_config, theme):
+    result = await config_service.update(ConfigUpdateRequest(theme=theme))
+    assert result["theme"] == theme
+    get_settings.cache_clear()
+    assert (await config_service.get())["theme"] == theme
+    assert json.loads(isolated_config.read_text())["theme"] == theme
+
+
+def test_invalid_theme_is_rejected():
+    with pytest.raises(ValidationError):
+        ConfigUpdateRequest(theme="invalid")

@@ -15,6 +15,7 @@ export function useConfig() {
   const save = useCallback(async () => {
     if (!config) return null;
     const data = await saveConfigApi({
+      theme: config.theme,
       download_path: config.download_path,
       is_zip: config.is_zip,
       enable_image_compression: config.enable_image_compression,

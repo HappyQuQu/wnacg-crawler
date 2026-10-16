@@ -5,14 +5,23 @@ import {
   EyeOff,
   HardDrive,
   Image,
+  Monitor,
+  Moon,
   Network,
   Server,
   Settings,
   ShieldCheck,
+  Sun,
   Trash2,
 } from "lucide-react";
 import { useState } from "react";
-import type { AppConfig } from "../types";
+import type { AppConfig, ThemePreference } from "../types";
+
+const themeOptions: { value: ThemePreference; label: string; icon: typeof Sun }[] = [
+  { value: "light", label: "浅色", icon: Sun },
+  { value: "dark", label: "深色", icon: Moon },
+  { value: "system", label: "跟随系统", icon: Monitor },
+];
 
 export function SettingsPage({
   config,
@@ -67,6 +76,31 @@ export function SettingsPage({
 
       {config ? (
         <div className="settings-stack">
+          <section className="settings-card">
+            <div className="settings-card-header">
+              <div className="settings-card-icon"><Monitor size={18} /></div>
+              <div>
+                <h3 id="appearance-title">外观</h3>
+                <p>选择界面主题，或自动跟随系统外观</p>
+              </div>
+            </div>
+            <fieldset className="theme-options" aria-labelledby="appearance-title" disabled={loading}>
+              {themeOptions.map(({ value, label, icon: Icon }) => (
+                <label className="theme-option" key={value}>
+                  <input
+                    type="radio"
+                    name="theme"
+                    value={value}
+                    checked={(config.theme ?? "system") === value}
+                    onChange={() => updateConfig({ theme: value })}
+                  />
+                  <span><Icon size={18} />{label}</span>
+                </label>
+              ))}
+            </fieldset>
+            <p className="settings-hint">选择后立即预览，点击“保存所有设置”保留主题偏好。</p>
+          </section>
+
           {/* ---- 下载存储 ---- */}
           <section className="settings-card">
             <div className="settings-card-header">

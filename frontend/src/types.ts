@@ -152,7 +152,10 @@ export type LogList = {
   total: number;
 };
 
+export type ThemePreference = "light" | "dark" | "system";
+
 export type AppConfig = {
+  theme: ThemePreference;
   download_path: string;
   is_zip: boolean;
   enable_image_compression: boolean;
