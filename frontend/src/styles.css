@@ -3694,7 +3694,7 @@ tbody tr:hover {
 
 @media (max-width: 860px) {
   .dashboard-shell .sidebar { gap: 12px; padding-bottom: 12px; }
-  .dashboard-shell .nav { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; overflow: visible; }
+  .dashboard-shell .nav { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; overflow: visible; }
   .dashboard-shell .nav-item { display: flex; align-items: center; justify-content: center; gap: 5px; width: auto; white-space: nowrap; padding: 4px; font-size: 12px; }
   .dashboard-shell .nav-item > span { white-space: nowrap; }
   .dashboard-shell .nav-item .pill-count { display: none; }
@@ -4261,3 +4261,58 @@ tbody tr:hover {
 .cover-preview-heading { display: flex; align-items: center; justify-content: space-between; gap: 40px; padding: 10px 14px; font-size: 12px; }
 .cover-preview-heading .icon-button { width: 36px; height: 36px; }
 .cover-preview > img { display: block; width: auto; height: calc(100dvh - 92px); max-width: calc(100vw - 34px); object-fit: contain; margin: 0 auto; }
+
+/* Dedicated log explorer shares the management workbench surfaces. */
+.logs-workbench { display: grid; gap: 20px; min-width: 0; }
+.logs-workbench > * { min-width: 0; }
+.logs-metric { cursor: default; }
+.logs-metric:hover { transform: none; box-shadow: none; }
+.logs-panel { border-radius: 12px; overflow: hidden; min-width: 0; }
+.logs-order { color: var(--muted); font-size: 10px; }
+.logs-tabs { gap: 24px; overflow-x: auto; }
+.logs-tabs button { white-space: nowrap; }
+.logs-scope { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 13px 20px; background: var(--surface-inset); border-bottom: 1px solid var(--line); }
+.logs-scope > span { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 10px; line-height: 1.7; }
+.logs-scope svg { flex-shrink: 0; }
+.logs-task-chip { display: flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; border: 1px solid var(--line); background: var(--surface); color: var(--primary-text); padding: 5px 8px; border-radius: 6px; cursor: pointer; font: inherit; font-size: 10px; }
+.logs-task-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.logs-entry { display: flex; align-items: flex-start; gap: 14px; padding: 20px; border-bottom: 1px solid var(--line); }
+.logs-entry:last-child { border-bottom: 0; }
+.logs-entry-icon { display: grid; place-items: center; width: 34px; height: 36px; flex-shrink: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-inset); color: var(--muted); }
+.logs-entry.level-error .logs-entry-icon { background: var(--danger-soft); color: var(--danger-text); border-color: transparent; }
+.logs-entry.level-warning .logs-entry-icon { background: var(--warning-soft); color: var(--warning-text); border-color: transparent; }
+.logs-entry-body { flex: 1; min-width: 0; }
+.logs-entry-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 7px 14px; color: var(--muted); font-size: 10px; }
+.logs-entry-meta .status { min-height: 21px; font-size: 10px; padding: 2px 6px; }
+.logs-message { margin: 10px 0 7px; color: var(--text); font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; white-space: pre-wrap; }
+.logs-event { display: flex; flex-wrap: wrap; gap: 5px 16px; color: var(--subtle); font-size: 10px; line-height: 1.6; overflow-wrap: anywhere; }
+.logs-details { margin-top: 12px; color: var(--text-secondary); font-size: 11px; }
+.logs-details > summary { width: fit-content; cursor: pointer; padding: 4px 0; }
+.logs-details > pre { max-height: 360px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-inset); font-size: 11px; line-height: 1.8; }
+.logs-entry-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 18px; margin-top: 12px; }
+.logs-entry-actions .overview-text-link { font-size: 10px; min-height: 28px; }
+.logs-read-error { display: flex; gap: 10px; padding: 18px 20px; color: var(--danger-text); border-bottom: 1px solid var(--line); background: var(--danger-soft); font-size: 12px; }
+.logs-read-error > svg { flex-shrink: 0; }
+.logs-read-error strong { font-weight: 600; }
+.logs-read-error p { margin: 6px 0; line-height: 1.7; overflow-wrap: anywhere; }
+.logs-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 10px; }
+.logs-pagination > div { display: flex; align-items: center; gap: 12px; }
+.logs-pagination .icon-button { width: 30px; height: 30px; }
+@media (max-width: 620px) {
+  .dashboard-shell .nav { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2px; }
+  .dashboard-shell .nav-item { gap: 4px; font-size: 11px; padding: 4px 2px; }
+  .dashboard-shell .nav-item svg { width: 15px; }
+  .logs-workbench { gap: 16px; }
+  .logs-tabs { gap: 22px; }
+  .logs-entry { padding: 16px; gap: 10px; }
+  .logs-entry-icon { width: 28px; height: 30px; }
+  .logs-entry-meta { gap: 7px 9px; }
+  .logs-message { font-size: 12px; }
+  .logs-scope, .logs-pagination { padding-left: 16px; padding-right: 16px; }
+  .logs-entry-actions { gap: 6px 13px; }
+}
+
+@media (max-width: 380px) {
+  .dashboard-shell .nav-item { flex-direction: column; min-height: 46px; gap: 3px; padding: 4px 0; font-size: 10px; }
+  .dashboard-shell .nav-item svg { width: 18px; height: 18px; flex-shrink: 0; }
+}

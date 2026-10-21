@@ -10,7 +10,6 @@ import { ProgressBar, StatusBadge } from "../components/Common";
 import { Skeleton } from "../components/Skeleton";
 
 type ProgressTab = "running" | "waiting" | "paused";
-type QueueTab = QueueFilter | "logs";
 const progressTabs = [{ key: "running", label: "运行中" }, { key: "waiting", label: "待开始" }, { key: "paused", label: "已暂停" }] as const;
 
 const latestFirst = (a: { updated_at: string | null }, b: { updated_at: string | null }) =>
@@ -18,7 +17,7 @@ const latestFirst = (a: { updated_at: string | null }, b: { updated_at: string |
 
 export function DashboardPage({
   tasks, libraryItems, recentActivity, initialLoading, loading, wsStatus, searchQuery,
-  onAddTask, onRefresh, onNavigateTasks, onNavigateLibrary, onOpenTask, onOpenLibrary, onRetryTask,
+  onAddTask, onRefresh, onNavigateTasks, onNavigateLogs, onNavigateLibrary, onOpenTask, onOpenLibrary, onRetryTask,
 }: {
   tasks: Task[];
   libraryItems: LibraryItem[];
@@ -29,7 +28,8 @@ export function DashboardPage({
   searchQuery: string;
   onAddTask: () => void;
   onRefresh: () => Promise<void>;
-  onNavigateTasks: (filter?: QueueTab) => void;
+  onNavigateTasks: (filter?: QueueFilter) => void;
+  onNavigateLogs: () => void;
   onNavigateLibrary: () => void;
   onOpenTask: (task: Task) => void;
   onOpenLibrary: (item: LibraryItem) => void;
@@ -154,7 +154,7 @@ export function DashboardPage({
       </div>
 
       <section className="panel overview-activity-panel" aria-labelledby="overview-activity-heading">
-        <div className="overview-panel-heading"><div><h3 id="overview-activity-heading">最近动态</h3><p>最近 3 条记录 · 完整历史可前往日志查看</p></div><button className="overview-text-link" onClick={() => onNavigateTasks("logs")}>全部日志<ArrowRight size={14} /></button></div>
+        <div className="overview-panel-heading"><div><h3 id="overview-activity-heading">最近动态</h3><p>最近 3 条记录 · 完整历史可前往日志查看</p></div><button className="overview-text-link" onClick={onNavigateLogs}>全部日志<ArrowRight size={14} /></button></div>
         {initialLoading ? <LoadingRows count={2} /> : activity.length ? <div className="overview-activity-list">{activity.map((item) => <div className="overview-activity-item" key={item.id}><span className={`overview-event-mark ${item.level === "error" ? "danger" : item.level === "warning" ? "warning" : ""}`}>{item.level === "error" || item.level === "warning" ? <AlertTriangle size={15} /> : item.event === "task_completed" ? <CheckCircle2 size={15} /> : <Activity size={15} />}</span><div><strong title={formatLogMessage(item)}>{formatLogMessage(item)}</strong><span>{[item.manga_id ? `ID ${item.manga_id}` : "系统记录", item.stage ? stageLabel(item.stage) : ""].filter(Boolean).join(" · ")}</span></div><time dateTime={item.created_at ?? undefined} title={formatTime(item.created_at)}>{formatTimeShort(item.created_at) || "—"}</time></div>)}</div> : <div className="overview-activity-empty">{query ? "没有匹配的动态记录" : "暂无活动记录，任务开始后会显示在这里。"}</div>}
       </section>
     </div>

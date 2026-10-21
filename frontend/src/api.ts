@@ -69,9 +69,10 @@ export async function fetchLibrary(params?: {
   return api<LibraryList>(`/api/library${qs ? `?${qs}` : ""}`);
 }
 
-export async function fetchLogs(taskId?: string): Promise<LogList> {
-  const params = new URLSearchParams({ limit: taskId ? "200" : "300" });
+export async function fetchLogs(taskId?: string, options?: { level?: string; limit?: number }): Promise<LogList> {
+  const params = new URLSearchParams({ limit: String(options?.limit ?? (taskId ? 200 : 300)) });
   if (taskId) params.set("task_id", taskId);
+  if (options?.level) params.set("level", options.level);
   return api<LogList>(`/api/logs?${params}`);
 }
 

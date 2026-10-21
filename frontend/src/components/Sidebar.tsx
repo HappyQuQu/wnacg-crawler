@@ -2,6 +2,7 @@ import {
   BookOpen,
   ClipboardList,
   Download,
+  FileText,
   LayoutDashboard,
   Plus,
   Settings,
@@ -12,6 +13,7 @@ const navItems: { key: ViewKey; label: string; Icon: typeof LayoutDashboard }[] 
   { key: "dashboard", label: "概览", Icon: LayoutDashboard },
   { key: "tasks", label: "下载任务", Icon: ClipboardList },
   { key: "library", label: "资料库", Icon: BookOpen },
+  { key: "logs", label: "日志", Icon: FileText },
   { key: "settings", label: "设置", Icon: Settings },
 ];
 
@@ -48,6 +50,7 @@ export function Sidebar({
             key={key}
             className={`nav-item ${activeView === key ? "active" : ""}`}
             onClick={() => setActiveView(key)}
+            aria-current={activeView === key ? "page" : undefined}
           >
             <Icon size={18} />
             <span>{label}</span>

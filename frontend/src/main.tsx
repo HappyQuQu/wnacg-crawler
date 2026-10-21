@@ -22,7 +22,7 @@ import { createRoot } from "react-dom/client";
 import { Search } from "lucide-react";
 import "./styles.css";
 
-import type { ViewKey, Task, TaskProgressMessage, LibraryItem, QueueFilter } from "./types";
+import type { ViewKey, Task, TaskProgressMessage, LibraryItem } from "./types";
 import { clearCompletedTasksApi, deleteLibraryApi } from "./api";
 import { Sidebar } from "./components/Sidebar";
 import { ToastProvider, useToast } from "./components/Toast";
@@ -33,6 +33,8 @@ import { BlockAlertBanner } from "./components/BlockAlertBanner";
 import { DashboardPage } from "./pages/DashboardPage";
 import { QueuePage } from "./pages/QueuePage";
 import { LibraryPage } from "./pages/LibraryPage";
+import { LogsPage } from "./pages/LogsPage";
+import { useAppNavigation } from "./hooks/useAppNavigation";
 import { SettingsPage } from "./pages/SettingsPage";
 import { useTasks } from "./hooks/useTasks";
 import { useLibrary } from "./hooks/useLibrary";
@@ -47,14 +49,15 @@ const viewCopy: Record<ViewKey, string> = {
   tasks: "下载任务",
   library: "资料库",
   settings: "设置",
+  logs: "日志",
 };
 
 function App() {
-  const [activeView, setActiveView] = useState<ViewKey>("dashboard");
-  const [queueTab, setQueueTab] = useState<QueueFilter | "logs">("all");
+  const { route, navigate } = useAppNavigation();
+  const { view: activeView, queueTab, search: searchQuery } = route;
+  const setSearchQuery = (search: string) => navigate({ search }, true);
   const [queueOpenDetail, setQueueOpenDetail] = useState(false);
   const [libraryOpenDetail, setLibraryOpenDetail] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [addPanelOpen, setAddPanelOpen] = useState(false);
   const [noImageMode, setNoImageMode] = useLocalStorage("wnacg-no-image", false);
@@ -88,24 +91,30 @@ function App() {
       } else if (payload.status === "failed") {
         showToast(`${payload.manga_id} 下载失败`, "error");
       }
-      void Promise.all([library.refresh(), logs.refresh()]);
+      void Promise.all([library.refresh(), logs.refresh()]).catch(() => { /* Automatic refresh retries on the next event. */ });
     }
   }, [tasks.updateFromWs, library.refresh, logs.refresh, showToast]));
 
-  useWsAutoRefresh(wsStatus, refreshAll);
+  useWsAutoRefresh(wsStatus, () => { void refreshAll().catch(() => { /* Read errors are exposed by the page hooks; polling retries. */ }); });
 
   useEffect(() => {
-    void refreshAll();
+    void refreshAll().catch((error: unknown) => showToast(error instanceof Error ? error.message : "数据读取失败，请重试", "error"));
   }, []);
+
+  useEffect(() => {
+    document.title = `${viewCopy[activeView]} · WNACG Downloader`;
+    window.scrollTo(0, 0);
+  }, [activeView]);
 
   const navCounts = useMemo<Record<ViewKey, string>>(
     () => ({
       dashboard: String(tasks.runningTasks.length),
       tasks: String(tasks.queueCounts.active),
       library: String(library.libraryCounts.all),
+      logs: String(logs.logCounts.error + logs.logCounts.warning),
       settings: config.config?.extension_token_set ? "OK" : "SET",
     }),
-    [tasks.runningTasks.length, tasks.queueCounts.active, library.libraryCounts.all, config.config?.extension_token_set]
+    [tasks.runningTasks.length, tasks.queueCounts.active, library.libraryCounts.all, logs.logCounts.error, logs.logCounts.warning, config.config?.extension_token_set]
   );
 
   async function withLoading(fn: () => Promise<void>) {
@@ -264,11 +273,17 @@ function App() {
     });
   }
 
+  function openTask(task: Task) {
+    setQueueOpenDetail(true);
+    tasks.setSelectedTaskId(task.task_id);
+    navigate({ view: "tasks", queueTab: "all", search: "" });
+  }
+
   return (
     <div className="app-shell dashboard-shell">
       <Sidebar
         activeView={activeView}
-        setActiveView={(view) => { setQueueOpenDetail(false); setLibraryOpenDetail(false); if (view === "settings" || activeView === "settings") setSearchQuery(""); setActiveView(view); }}
+        setActiveView={(view) => { setQueueOpenDetail(false); setLibraryOpenDetail(false); navigate({ view, search: "" }); }}
         wsStatus={wsStatus}
         navCounts={navCounts}
         runningCount={tasks.runningTasks.length}
@@ -282,7 +297,7 @@ function App() {
             <label className="search">
               <Search size={15} />
               <span className="sr-only">搜索</span>
-              <input placeholder={activeView === "settings" ? "搜索设置项" : "搜索 ID、标题、状态"} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+              <input placeholder={activeView === "settings" ? "搜索设置项" : activeView === "logs" ? "搜索作品 ID、任务 ID、错误信息" : "搜索 ID、标题、状态"} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
             </label>
           </div>
         </header>
@@ -304,10 +319,11 @@ function App() {
               searchQuery={searchQuery}
               onAddTask={() => setAddPanelOpen(true)}
               onRefresh={() => withLoading(refreshAll)}
-              onNavigateTasks={(filter = "all") => { setSearchQuery(""); setQueueOpenDetail(false); setQueueTab(filter); setActiveView("tasks"); }}
-              onNavigateLibrary={() => { setSearchQuery(""); setLibraryOpenDetail(false); setActiveView("library"); }}
-              onOpenTask={(task) => { setSearchQuery(""); setQueueOpenDetail(true); tasks.setSelectedTaskId(task.task_id); setQueueTab("all"); setActiveView("tasks"); }}
-              onOpenLibrary={(item) => { setSearchQuery(""); setLibraryOpenDetail(true); setActiveView("library"); void withLoading(() => library.openDetail(item)); }}
+              onNavigateTasks={(filter = "all") => { setQueueOpenDetail(false); navigate({ view: "tasks", queueTab: filter, search: "" }); }}
+              onNavigateLogs={() => navigate({ view: "logs", logLevel: "all", logTaskId: "", search: "" })}
+              onNavigateLibrary={() => { setLibraryOpenDetail(false); navigate({ view: "library", search: "" }); }}
+              onOpenTask={openTask}
+              onOpenLibrary={(item) => { setLibraryOpenDetail(true); navigate({ view: "library", search: "" }); void withLoading(() => library.openDetail(item)); }}
               onRetryTask={handleRetryTask}
             />
           )}
@@ -316,7 +332,6 @@ function App() {
             <QueuePage
               tasks={tasks.tasks}
               selectedTask={tasks.selectedTask}
-              logItems={logs.logItems}
               queueCounts={tasks.queueCounts}
               noImageMode={noImageMode}
               searchQuery={searchQuery}
@@ -326,12 +341,11 @@ function App() {
               wsStatus={wsStatus}
               onAddTask={() => setAddPanelOpen(true)}
               onRefresh={() => withLoading(tasks.refresh)}
-              onRefreshLogs={() => withLoading(logs.refresh)}
               onControl={handleControlTask}
               onRetry={handleRetryTask}
               onClearCompleted={handleClearCompleted}
               activeTab={queueTab}
-              onTabChange={setQueueTab}
+              onTabChange={(queueTab) => navigate({ queueTab })}
               openSelectedDetail={queueOpenDetail}
             />
           )}
@@ -372,6 +386,8 @@ function App() {
               onViewModeChange={library.setViewMode}
             />
           )}
+
+          {activeView === "logs" && <LogsPage level={route.logLevel} taskId={route.logTaskId} searchQuery={searchQuery} wsStatus={wsStatus} tasks={tasks.tasks} onLevelChange={(logLevel) => navigate({ logLevel })} onTaskFilter={(logTaskId) => navigate({ logTaskId })} onClearSearch={() => setSearchQuery("")} onOpenTask={openTask} />}
 
           {activeView === "settings" && (
             <SettingsPage

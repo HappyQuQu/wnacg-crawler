@@ -4,19 +4,18 @@ import {
   ChevronRight, ExternalLink, LayoutGrid, List, ListTodo, Pause,
   Play, Plus, RefreshCw, RotateCcw, Trash2, X, XCircle,
 } from "lucide-react";
-import type { Task, LogItem, QueueFilter, WsStatus } from "../types";
-import { stageLabel, formatTime, formatTimeShort, canPause, canResume, canCancel, canRetry, formatLogMessage, formatLogDetails, taskDisplayName, progressPercent } from "../utils";
-import { Info, ProgressBar, StatusBadge, LogLevelBadge } from "../components/Common";
+import type { Task, QueueFilter, WsStatus } from "../types";
+import { stageLabel, formatTime, formatTimeShort, canPause, canResume, canCancel, canRetry, taskDisplayName, progressPercent } from "../utils";
+import { Info, ProgressBar, StatusBadge } from "../components/Common";
 import { Skeleton, SkeletonTable } from "../components/Skeleton";
 import { CoverImage } from "../components/CoverImage";
 import { TaskRealtimeLogs } from "../components/TaskRealtimeLogs";
 
-const tabs: { key: QueueFilter | "logs"; label: string }[] = [
+const tabs: { key: QueueFilter; label: string }[] = [
   { key: "all", label: "全部" },
   { key: "active", label: "进行中" },
   { key: "completed", label: "已完成" },
   { key: "attention", label: "需处理" },
-  { key: "logs", label: "日志" },
 ];
 type ViewMode = "table" | "card";
 type TaskActions = {
@@ -53,13 +52,12 @@ function progressCount(task: Task) {
 }
 
 export function QueuePage({
-  tasks, selectedTask, logItems, queueCounts, noImageMode, searchQuery,
-  loading, initialLoading, wsStatus, onTaskSelect, onRefresh, onRefreshLogs,
+  tasks, selectedTask, queueCounts, noImageMode, searchQuery,
+  loading, initialLoading, wsStatus, onTaskSelect, onRefresh,
   onControl, onRetry, onClearCompleted, activeTab, onTabChange, onAddTask, openSelectedDetail,
 }: TaskActions & {
   tasks: Task[];
   selectedTask: Task | null;
-  logItems: LogItem[];
   queueCounts: Record<string, number>;
   noImageMode: boolean;
   searchQuery: string;
@@ -67,10 +65,9 @@ export function QueuePage({
   wsStatus: WsStatus;
   onTaskSelect: (id: string) => void;
   onRefresh: () => Promise<void>;
-  onRefreshLogs: () => Promise<void>;
   onClearCompleted: (task?: Task) => void;
-  activeTab: QueueFilter | "logs";
-  onTabChange: (tab: QueueFilter | "logs") => void;
+  activeTab: QueueFilter;
+  onTabChange: (tab: QueueFilter) => void;
   onAddTask: () => void;
   openSelectedDetail: boolean;
 }) {
@@ -94,11 +91,6 @@ export function QueuePage({
     return !normalizedSearch || [task.manga_id, task.title, task.source, task.status, task.stage, task.task_id, progressDescription(task)]
       .some((value) => value.toLowerCase().includes(normalizedSearch));
   }), [normalizedSearch, activeTab, tasks]);
-  const filteredLogs = useMemo(() => logItems.filter((item) => !normalizedSearch ||
-    [item.level, item.event, item.message, item.manga_id, item.task_id, item.stage, JSON.stringify(item.details)]
-      .some((value) => value?.toLowerCase().includes(normalizedSearch))), [logItems, normalizedSearch]);
-
-  const isLogsTab = activeTab === "logs";
   const detailTask = filteredTasks.find((task) => task.task_id === selectedTask?.task_id) ?? filteredTasks[0] ?? null;
   const running = tasks.filter((task) => task.status === "running").length;
   const waiting = tasks.filter((task) => ["pending", "queued"].includes(task.status)).length;
@@ -113,7 +105,7 @@ export function QueuePage({
     onTaskSelect(id);
     if (compact) setInspectorOpen(true);
   }
-  function selectTab(tab: QueueFilter | "logs") {
+  function selectTab(tab: QueueFilter) {
     setInspectorOpen(false);
     onTabChange(tab);
   }
@@ -131,7 +123,7 @@ export function QueuePage({
           <p>查看下载进度，继续未完成的任务，整理已完成记录。</p>
         </div>
         <div className="overview-heading-actions">
-          <button className="button secondary overview-refresh" onClick={() => void (isLogsTab ? onRefreshLogs() : onRefresh())} disabled={loading} aria-label={isLogsTab ? "刷新日志" : "刷新任务"} title={isLogsTab ? "刷新日志" : "刷新任务"}><RefreshCw size={16} className={loading ? "spin" : ""} /></button>
+          <button className="button secondary overview-refresh" onClick={() => void onRefresh()} disabled={loading} aria-label="刷新任务" title="刷新任务"><RefreshCw size={16} className={loading ? "spin" : ""} /></button>
           <button className="button primary" onClick={onAddTask}><Plus size={16} />添加下载</button>
         </div>
       </header>
@@ -142,17 +134,17 @@ export function QueuePage({
           <div className="overview-metric-bottom"><span>{detail}</span><ArrowRight size={14} /></div>
         </button>)}
       </section>
-      <div className={`queue-workspace ${isLogsTab ? "queue-logs-view" : ""}`}>
-        <section className="panel queue-list-panel" aria-label={isLogsTab ? "运行日志" : "下载列表"}>
+      <div className="queue-workspace">
+        <section className="panel queue-list-panel" aria-label="下载列表">
           <div className="overview-panel-heading">
-            <div><span className="overview-eyebrow">{isLogsTab ? "运行记录" : "任务管理"}</span><h3>{isLogsTab ? "运行日志" : "下载列表"}<span className="queue-result-count">{initialLoading ? "读取中…" : `${isLogsTab ? filteredLogs.length : filteredTasks.length} 项${normalizedSearch ? "匹配" : "记录"}`}</span></h3></div>
-            {!isLogsTab && <div className="queue-list-tools">
+            <div><span className="overview-eyebrow">任务管理</span><h3>下载列表<span className="queue-result-count">{initialLoading ? "读取中…" : `${filteredTasks.length} 项${normalizedSearch ? "匹配" : "记录"}`}</span></h3></div>
+            <div className="queue-list-tools">
               <button className="overview-text-link" onClick={() => onClearCompleted()} disabled={loading || !queueCounts.completed}><Trash2 size={14} />清除已完成</button>
               <div className="queue-view-toggle" role="group" aria-label="显示方式">
                 <button aria-label="列表视图" title="列表视图" aria-pressed={viewMode === "table"} onClick={() => setViewMode("table")}><List size={15} /></button>
                 <button aria-label="卡片视图" title="卡片视图" aria-pressed={viewMode === "card"} onClick={() => setViewMode("card")}><LayoutGrid size={15} /></button>
               </div>
-            </div>}
+            </div>
           </div>
           <div className="overview-task-tabs queue-tabs" role="tablist" aria-label="任务状态过滤" onKeyDown={(event) => {
             if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
@@ -162,18 +154,18 @@ export function QueuePage({
             selectTab(tabs[next].key);
             document.getElementById(`queue-tab-${tabs[next].key}`)?.focus();
           }}>
-            {tabs.map((tab) => <button role="tab" id={`queue-tab-${tab.key}`} key={tab.key} tabIndex={activeTab === tab.key ? 0 : -1} aria-controls="queue-results" aria-selected={activeTab === tab.key} className={activeTab === tab.key ? "active" : ""} onClick={() => selectTab(tab.key)}>{tab.label}<span>{initialLoading ? "—" : tab.key === "logs" ? logItems.length : queueCounts[tab.key] ?? 0}</span></button>)}
+            {tabs.map((tab) => <button role="tab" id={`queue-tab-${tab.key}`} key={tab.key} tabIndex={activeTab === tab.key ? 0 : -1} aria-controls="queue-results" aria-selected={activeTab === tab.key} className={activeTab === tab.key ? "active" : ""} onClick={() => selectTab(tab.key)}>{tab.label}<span>{initialLoading ? "—" : queueCounts[tab.key] ?? 0}</span></button>)}
           </div>
           <div id="queue-results" role="tabpanel" aria-labelledby={`queue-tab-${activeTab}`}>
-            {initialLoading ? <div className="queue-loading"><SkeletonTable rows={6} cols={3} /></div> : isLogsTab ? <LogsView logs={filteredLogs} searching={!!normalizedSearch} /> : filteredTasks.length ? <div className={`queue-entries ${viewMode === "card" ? "queue-cards" : ""}`}>
+            {initialLoading ? <div className="queue-loading"><SkeletonTable rows={6} cols={3} /></div> : filteredTasks.length ? <div className={`queue-entries ${viewMode === "card" ? "queue-cards" : ""}`}>
               {filteredTasks.map((task) => <TaskEntry key={task.task_id} task={task} selected={task.task_id === detailTask?.task_id} noImageMode={noImageMode} loading={loading} onSelect={() => selectTask(task.task_id)} onControl={onControl} onRetry={onRetry} />)}
             </div> : <div className="overview-empty overview-empty-large"><ListTodo size={30} /><strong>{normalizedSearch ? "没有匹配的任务" : activeTab === "attention" ? "暂无待处理问题" : activeTab === "completed" ? "暂无已完成记录" : "当前分类暂无任务"}</strong><p>{normalizedSearch ? "试试其他标题、状态或作品 ID。" : activeTab === "completed" ? "下载完成的记录会显示在这里。" : activeTab === "attention" ? "失败和部分完成的任务会显示在这里。" : "添加作品 ID 或链接，开始新的下载。"}</p>{!normalizedSearch && <button className="button secondary" onClick={onAddTask}><Plus size={15} />添加下载</button>}</div>}
           </div>
-          {!isLogsTab && !initialLoading && filteredTasks.length > 0 && <div className="queue-list-footnote"><span><span className="queue-live-dot" />{running} 项运行中 · {waiting} 项等待 · {paused} 项暂停</span><span>点击任务查看详情</span></div>}
+          {!initialLoading && filteredTasks.length > 0 && <div className="queue-list-footnote"><span><span className="queue-live-dot" />{running} 项运行中 · {waiting} 项等待 · {paused} 项暂停</span><span>点击任务查看详情</span></div>}
         </section>
-        {!isLogsTab && !compact && inspector}
+        {!compact && inspector}
       </div>
-      {!isLogsTab && compact && inspectorOpen && <InspectorDialog onClose={() => setInspectorOpen(false)}>{inspector}</InspectorDialog>}
+      {compact && inspectorOpen && <InspectorDialog onClose={() => setInspectorOpen(false)}>{inspector}</InspectorDialog>}
     </div>
   );
 }
@@ -202,14 +194,6 @@ function TaskEntry({ task, selected, noImageMode, loading, onSelect, onControl, 
       {task.status === "completed" && <CheckCircle2 size={16} className="icon-success" />}
     </div>
   </article>;
-}
-
-function LogsView({ logs, searching }: { logs: LogItem[]; searching: boolean }) {
-  if (!logs.length) return <div className="overview-empty overview-empty-large"><Activity size={30} /><strong>{searching ? "没有匹配的日志" : "暂无运行日志"}</strong><p>任务产生的运行记录会自动显示在这里。</p></div>;
-  return <div className="queue-log-list">{logs.map((item) => <article className="queue-log-entry" key={item.id}>
-    <span className={`queue-log-symbol ${item.level}`}><Activity size={16} /></span>
-    <div><div className="queue-log-meta"><LogLevelBadge level={item.level} /><time>{formatTime(item.created_at)}</time>{item.manga_id && <span>ID {item.manga_id}</span>}{item.stage && <span>{stageLabel(item.stage)}</span>}</div><p>{formatLogMessage(item)}</p><span className="queue-log-event">{item.event}</span>{Object.keys(item.details).length > 0 && <details><summary>查看日志详情</summary><p>{formatLogDetails(item.details)}</p></details>}</div>
-  </article>)}</div>;
 }
 
 function TaskCover({ url, noImageMode, preview = false }: { url: string; noImageMode: boolean; preview?: boolean }) {

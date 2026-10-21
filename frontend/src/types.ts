@@ -142,7 +142,8 @@ export type TaskLogMessage = { type: "task_log"; item: LogItem };
 export type WsMessage = TaskProgressMessage | SystemAlertMessage | TaskLogMessage;
 
 export type WsStatus = "connecting" | "connected" | "fallback";
-export type ViewKey = "dashboard" | "tasks" | "library" | "settings";
+export type ViewKey = "dashboard" | "tasks" | "library" | "logs" | "settings";
+export type LogFilter = "all" | "problems" | "error" | "warning" | "info";
 export type QueueFilter = "all" | "active" | "failed" | "partial" | "completed" | "attention";
 export type LibraryFilter = "all" | "completed" | "partial" | "failed" | "missing" | "zipped" | "unzipped" | "attention" | "active";
 export type LibrarySortKey = "updated_at" | "title" | "completeness" | "pic_count" | "zip_size";
