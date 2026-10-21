@@ -1,43 +1,32 @@
-import {
-  ArrowUpDown,
-  BookOpen,
-  Eye,
-  HardDrive,
-  LayoutGrid,
-  List,
-  RefreshCw,
-  ShieldCheck,
-  Archive,
-} from "lucide-react";
+import type { ReactNode } from "react";
+import { Archive, ArrowDown, ArrowUp, BookOpen, ChevronRight, Download, LayoutGrid, List, Trash2, AlertTriangle } from "lucide-react";
 import type { LibraryItem, LibrarySortKey, LibraryViewMode } from "../types";
-import { formatBytes, libraryDisplayName } from "../utils";
+import { formatBytes, formatTime, formatTimeShort, libraryDisplayName } from "../utils";
+import { canDownloadLibrary, isLibraryActive, libraryNeedsAttention } from "../libraryUtils";
 import { ProgressBar, StatusBadge } from "./Common";
+import { LibraryCover } from "./LibraryCover";
 import { SkeletonCard, SkeletonTable } from "./Skeleton";
 
+type SelectionActions = {
+  checkedIds: Set<string>;
+  checkedCount: number;
+  onToggleItem: (id: string) => void;
+  onToggleAll: () => void;
+  onClear: () => void;
+  onDownload: (item?: LibraryItem) => void;
+  onDelete: (item?: LibraryItem) => void;
+  downloadBusy: boolean;
+};
 const sortOptions: { key: LibrarySortKey; label: string }[] = [
-  { key: "updated_at", label: "更新时间" },
-  { key: "title", label: "标题" },
-  { key: "completeness", label: "完成度" },
-  { key: "pic_count", label: "图片数" },
-  { key: "zip_size", label: "文件大小" },
+  { key: "updated_at", label: "更新时间" }, { key: "title", label: "标题" },
+  { key: "completeness", label: "完整度" }, { key: "pic_count", label: "图片数" },
+  { key: "zip_size", label: "ZIP 大小" },
 ];
 
 export function LibraryContent({
-  items,
-  selectedId,
-  viewMode,
-  sortBy,
-  sortOrder,
-  noImageMode,
-  initialLoading,
-  loading,
-  onSelect,
-  onSortChange,
-  onToggleSortOrder,
-  onViewModeChange,
-  onRefresh,
-  onVerify,
-  onZip,
+  items, selectedId, viewMode, sortBy, sortOrder, noImageMode, initialLoading, loading,
+  onSelect, onSortChange, onToggleSortOrder, onViewModeChange, selection,
+  filters, searching, hasFilters, onResetFilters, onAddTask,
 }: {
   items: LibraryItem[];
   selectedId: string | null;
@@ -51,226 +40,51 @@ export function LibraryContent({
   onSortChange: (key: LibrarySortKey) => void;
   onToggleSortOrder: () => void;
   onViewModeChange: (mode: LibraryViewMode) => void;
-  onRefresh: () => Promise<void>;
-  onVerify: (item: LibraryItem) => Promise<void>;
-  onZip: (item: LibraryItem) => Promise<void>;
+  selection: SelectionActions;
+  filters: ReactNode;
+  searching: boolean;
+  hasFilters: boolean;
+  onResetFilters: () => void;
+  onAddTask: () => void;
 }) {
-  return (
-    <section className="library-content">
-      <div className="library-toolbar">
-        <div className="toolbar-left">
-          <div className="sort-control">
-            <ArrowUpDown size={14} />
-            <select
-              value={sortBy}
-              onChange={(e) => onSortChange(e.target.value as LibrarySortKey)}
-              className="sort-select"
-            >
-              {sortOptions.map((opt) => (
-                <option key={opt.key} value={opt.key}>{opt.label}</option>
-              ))}
-            </select>
-            <button
-              className={`sort-order-btn ${sortOrder === "asc" ? "asc" : ""}`}
-              onClick={onToggleSortOrder}
-              title={sortOrder === "desc" ? "降序" : "升序"}
-            >
-              {sortOrder === "desc" ? "↓" : "↑"}
-            </button>
-          </div>
-        </div>
-        <div className="toolbar-right">
-          <div className="view-toggle">
-            <button
-              className={`view-toggle-btn ${viewMode === "list" ? "active" : ""}`}
-              onClick={() => onViewModeChange("list")}
-              title="列表视图"
-            >
-              <List size={15} />
-            </button>
-            <button
-              className={`view-toggle-btn ${viewMode === "card" ? "active" : ""}`}
-              onClick={() => onViewModeChange("card")}
-              title="卡片视图"
-            >
-              <LayoutGrid size={15} />
-            </button>
-          </div>
-          <button className="button secondary" onClick={() => void onRefresh()} disabled={loading}>
-            <RefreshCw size={15} />刷新
-          </button>
-        </div>
+  return <section className="panel collection-panel" aria-label="本地作品列表">
+    <div className="overview-panel-heading">
+      <div><span className="overview-eyebrow">本地收藏</span><h3 id="library-results-heading">作品列表<span className="queue-result-count">{initialLoading ? "读取中…" : `${items.length} 项${searching || hasFilters ? "匹配" : "作品"}`}</span></h3></div>
+      <div className="queue-view-toggle" role="group" aria-label="资料库显示方式">
+        <button title="列表视图" aria-label="列表视图" aria-pressed={viewMode === "list"} onClick={() => onViewModeChange("list")}><List size={15} /></button>
+        <button title="卡片视图" aria-label="卡片视图" aria-pressed={viewMode === "card"} onClick={() => onViewModeChange("card")}><LayoutGrid size={15} /></button>
       </div>
-
-      {initialLoading ? (
-        viewMode === "card" ? (
-          <div className="library-card-grid">
-            {Array.from({ length: 8 }, (_, i) => <SkeletonCard key={i} />)}
-          </div>
-        ) : (
-          <div style={{ padding: "14px 18px" }}><SkeletonTable rows={6} cols={6} /></div>
-        )
-      ) : items.length === 0 ? (
-        <div className="empty-state">
-          <HardDrive size={28} />
-          <strong>当前分类暂无资料</strong>
-          <p>完成下载或校验后，条目会出现在这里。</p>
-        </div>
-      ) : viewMode === "card" ? (
-        <CardGrid
-          items={items}
-          selectedId={selectedId}
-          noImageMode={noImageMode}
-          loading={loading}
-          onSelect={onSelect}
-          onVerify={onVerify}
-          onZip={onZip}
-        />
-      ) : (
-        <ListView
-          items={items}
-          selectedId={selectedId}
-          noImageMode={noImageMode}
-          loading={loading}
-          onSelect={onSelect}
-          onVerify={onVerify}
-          onZip={onZip}
-        />
-      )}
-    </section>
-  );
-}
-
-function CardGrid({
-  items,
-  selectedId,
-  noImageMode,
-  loading,
-  onSelect,
-  onVerify,
-  onZip,
-}: {
-  items: LibraryItem[];
-  selectedId: string | null;
-  noImageMode: boolean;
-  loading: boolean;
-  onSelect: (item: LibraryItem) => void;
-  onVerify: (item: LibraryItem) => Promise<void>;
-  onZip: (item: LibraryItem) => Promise<void>;
-}) {
-  return (
-    <div className="library-card-grid">
-      {items.map((item) => (
-        <article
-          key={item.manga_id}
-          className={`library-card ${item.manga_id === selectedId ? "selected" : ""}`}
-          role="button"
-          tabIndex={0}
-          onClick={() => onSelect(item)}
-          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(item); } }}
-        >
-          <div className={`library-card-cover ${noImageMode ? "no-image-blur" : ""}`}>
-            {item.cover_url ? <img src={item.cover_url} alt="" /> : <BookOpen size={24} />}
-          </div>
-          <div className="library-card-body">
-            <div className="library-card-title">
-              <h3>{libraryDisplayName(item)}</h3>
+    </div>
+    {filters}
+    <div className="collection-toolbar">
+      <label className="collection-select-all"><input type="checkbox" aria-label="全选当前筛选结果" checked={items.length > 0 && selection.checkedCount === items.length} ref={(node) => { if (node) node.indeterminate = selection.checkedCount > 0 && selection.checkedCount < items.length; }} disabled={loading || initialLoading || !items.length} onChange={selection.onToggleAll} />全选<span>{selection.checkedCount ? `已选 ${selection.checkedCount} 项` : "选择作品进行批量操作"}</span></label>
+      <div className="collection-sort"><label><span className="sr-only">资料库排序</span><select aria-label="资料库排序" value={sortBy} onChange={(event) => onSortChange(event.target.value as LibrarySortKey)} disabled={loading}>{sortOptions.map((option) => <option key={option.key} value={option.key}>{option.label}</option>)}</select></label><button className="icon-button" title={sortOrder === "desc" ? "当前降序，切换为升序" : "当前升序，切换为降序"} aria-label={sortOrder === "desc" ? "切换为升序" : "切换为降序"} disabled={loading} onClick={onToggleSortOrder}>{sortOrder === "desc" ? <ArrowDown size={14} /> : <ArrowUp size={14} />}</button></div>
+    </div>
+    {selection.checkedCount > 0 && <div className="collection-batch-bar" aria-label="批量操作">
+      <div><strong>已选 {selection.checkedCount} 项作品</strong><span>每项作品下载为单独文件</span></div>
+      <div><button className="button primary" disabled={loading} onClick={() => selection.onDownload()}><Download size={14} />{selection.downloadBusy ? "准备下载中…" : "下载所选"}</button><button className="button secondary danger-button" disabled={loading} onClick={() => selection.onDelete()}><Trash2 size={14} />删除所选</button><button className="overview-text-link" disabled={loading} onClick={selection.onClear}>取消选择</button></div>
+    </div>}
+    <div id="library-results" role="tabpanel" aria-labelledby="library-results-heading">
+      {initialLoading ? viewMode === "card" ? <div className="collection-entries as-cards">{Array.from({ length: 6 }, (_, index) => <SkeletonCard key={index} />)}</div> : <div className="queue-loading"><SkeletonTable rows={6} cols={4} /></div> : !items.length ? <div className="overview-empty overview-empty-large"><BookOpen size={30} /><strong>{searching ? "没有匹配的作品" : hasFilters ? "当前分类暂无作品" : "资料库还是空的"}</strong><p>{searching ? "试试其他标题、状态或作品 ID。" : hasFilters ? "调整筛选条件，查看其他本地作品。" : "添加下载后，作品与文件信息会显示在这里。"}</p><button className="button secondary" onClick={searching || hasFilters ? onResetFilters : onAddTask}>{searching || hasFilters ? "重置筛选" : "添加下载"}</button></div> : <div className={`collection-entries ${viewMode === "card" ? "as-cards" : "as-list"}`}>
+        {items.map((item) => {
+          const active = isLibraryActive(item);
+          const percentage = Math.min(100, Math.max(0, Math.round(item.completeness * 100)));
+          return <article key={item.manga_id} className={`collection-entry ${item.manga_id === selectedId ? "selected" : ""} ${selection.checkedIds.has(item.manga_id) ? "checked" : ""} ${item.status === "completed" ? "complete" : ""}`}>
+            <label className="collection-select"><input type="checkbox" aria-label={`选择作品 ${item.manga_id}`} checked={selection.checkedIds.has(item.manga_id)} disabled={loading} onChange={() => selection.onToggleItem(item.manga_id)} /></label>
+            <button className="collection-open" aria-label={`查看作品 ${item.manga_id}`} aria-pressed={item.manga_id === selectedId} onClick={() => onSelect(item)}>
+              <LibraryCover url={item.cover_url} noImageMode={noImageMode} />
+              <span className="collection-copy"><strong title={libraryDisplayName(item)}>{libraryDisplayName(item)}</strong><span>ID {item.manga_id}<time title={formatTime(item.updated_at)}>{formatTimeShort(item.updated_at) || "—"} 更新</time></span></span>
               <StatusBadge status={item.status} />
-            </div>
-            <span className="mono library-card-id">{item.manga_id}</span>
-            <div className="library-progress-row">
-              <ProgressBar value={item.completeness} />
-              <strong>{Math.round(item.completeness * 100)}%</strong>
-            </div>
-            <div className="library-meta">
-              <span>{item.pic_count > 0 ? `${item.pic_count} 图` : `${item.total_files} 文件`}</span>
-              <span>{item.valid_files}/{item.total_files} 有效</span>
-              {item.zip_exists && <span>{formatBytes(item.zip_size)}</span>}
-              {item.missing_files > 0 && <span className="meta-warning">缺 {item.missing_files}</span>}
-              {item.failed_files > 0 && <span className="meta-danger">失败 {item.failed_files}</span>}
-            </div>
-            <div className="row-actions">
-              <button className="icon-button" title="查看文件" onClick={(e) => { e.stopPropagation(); onSelect(item); }}><Eye size={14} /></button>
-              <button className="icon-button" title="重新校验" onClick={(e) => { e.stopPropagation(); void onVerify(item); }} disabled={loading}><ShieldCheck size={14} /></button>
-              <button className="icon-button" title="重新打包" onClick={(e) => { e.stopPropagation(); void onZip(item); }} disabled={loading || item.total_files === 0}><Archive size={14} /></button>
-            </div>
-          </div>
-        </article>
-      ))}
+              <span className="collection-integrity"><span><span>文件完整度</span><strong>{item.total_files > 0 ? `${percentage}%` : "—"}</strong></span><ProgressBar value={item.completeness} /><small>{item.valid_files} / {item.total_files} 个有效文件</small></span>
+              <span className={`collection-archive ${item.zip_exists ? "ready" : ""}`}><span><Archive size={13} />{item.zip_exists ? "已打包" : "未打包"}</span><small>{item.zip_exists ? formatBytes(item.zip_size) : active ? "等待下载完成" : libraryNeedsAttention(item) ? "补全后可打包" : "下载时自动准备"}</small></span>
+              {!active && (item.last_error || item.failed_files > 0 || item.missing_files > 0) && <span className="collection-entry-warning"><AlertTriangle size={12} /><span>{item.last_error || `缺失 ${item.missing_files} 个 · 失败 ${item.failed_files} 个`}</span></span>}
+              <ChevronRight size={14} className="collection-chevron" />
+            </button>
+            <div className="collection-entry-actions"><button className="button secondary" aria-label={`下载作品 ${item.manga_id}`} title={active ? "作品仍有未结束的任务" : !canDownloadLibrary(item) ? "图片尚未完整，请先补全" : "下载此作品的独立文件"} disabled={loading || !canDownloadLibrary(item)} onClick={() => selection.onDownload(item)}><Download size={14} /><span>下载文件</span></button><button className="icon-button danger-button" aria-label={`删除作品 ${item.manga_id}`} title={active ? "请先完成或取消任务" : "删除资料"} disabled={loading || active} onClick={() => selection.onDelete(item)}><Trash2 size={14} /></button></div>
+          </article>;
+        })}
+      </div>}
     </div>
-  );
-}
-
-function ListView({
-  items,
-  selectedId,
-  noImageMode,
-  loading,
-  onSelect,
-  onVerify,
-  onZip,
-}: {
-  items: LibraryItem[];
-  selectedId: string | null;
-  noImageMode: boolean;
-  loading: boolean;
-  onSelect: (item: LibraryItem) => void;
-  onVerify: (item: LibraryItem) => Promise<void>;
-  onZip: (item: LibraryItem) => Promise<void>;
-}) {
-  return (
-    <div className="table-wrap">
-      <table className="library-table">
-        <thead>
-          <tr>
-            <th>封面</th>
-            <th>标题</th>
-            <th>状态</th>
-            <th>完成度</th>
-            <th>图片</th>
-            <th>大小</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((item) => (
-            <tr
-              key={item.manga_id}
-              className={item.manga_id === selectedId ? "selected-row" : ""}
-              onClick={() => onSelect(item)}
-            >
-              <td>
-                <div className={`row-thumb ${noImageMode ? "no-image-blur" : ""}`}>
-                  {item.cover_url ? <img src={item.cover_url} alt="" /> : <BookOpen size={16} />}
-                </div>
-              </td>
-              <td>
-                <div className="row-text">
-                  <span className="row-name">{libraryDisplayName(item)}</span>
-                  <span className="mono row-id-small">{item.manga_id}</span>
-                </div>
-              </td>
-              <td><StatusBadge status={item.status} /></td>
-              <td>
-                <div className="progress-cell">
-                  <ProgressBar value={item.completeness} />
-                  <span>{Math.round(item.completeness * 100)}%</span>
-                </div>
-              </td>
-              <td className="mono">{item.pic_count > 0 ? `${item.pic_count}` : `${item.total_files}`}</td>
-              <td>{item.zip_exists ? formatBytes(item.zip_size) : "-"}</td>
-              <td>
-                <div className="row-actions">
-                  <button className="icon-button" title="查看" onClick={(e) => { e.stopPropagation(); onSelect(item); }}><Eye size={14} /></button>
-                  <button className="icon-button" title="校验" onClick={(e) => { e.stopPropagation(); void onVerify(item); }} disabled={loading}><ShieldCheck size={14} /></button>
-                  <button className="icon-button" title="打包" onClick={(e) => { e.stopPropagation(); void onZip(item); }} disabled={loading || item.total_files === 0}><Archive size={14} /></button>
-                </div>
-              </td>
-            </tr>
-          ))}
-          {items.length === 0 && <tr><td colSpan={7}>当前分类暂无资料</td></tr>}
-        </tbody>
-      </table>
-    </div>
-  );
+    {!initialLoading && items.length > 0 && <div className="collection-list-footer"><span>共 {items.length} 项作品</span><span>文件操作前会再次检查本地状态</span></div>}
+  </section>;
 }

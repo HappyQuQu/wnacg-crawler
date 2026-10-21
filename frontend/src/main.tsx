@@ -22,7 +22,8 @@ import { createRoot } from "react-dom/client";
 import { Search } from "lucide-react";
 import "./styles.css";
 
-import type { ViewKey, Task, TaskProgressMessage } from "./types";
+import type { ViewKey, Task, TaskProgressMessage, LibraryItem, QueueFilter } from "./types";
+import { clearCompletedTasksApi, deleteLibraryApi } from "./api";
 import { Sidebar } from "./components/Sidebar";
 import { ToastProvider, useToast } from "./components/Toast";
 import { ErrorBoundary } from "./components/Common";
@@ -50,6 +51,9 @@ const viewCopy: Record<ViewKey, string> = {
 
 function App() {
   const [activeView, setActiveView] = useState<ViewKey>("dashboard");
+  const [queueTab, setQueueTab] = useState<QueueFilter | "logs">("all");
+  const [queueOpenDetail, setQueueOpenDetail] = useState(false);
+  const [libraryOpenDetail, setLibraryOpenDetail] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [addPanelOpen, setAddPanelOpen] = useState(false);
@@ -60,6 +64,7 @@ function App() {
     message: string;
     variant: "danger" | "default";
     onConfirm: () => void;
+    confirmLabel?: string;
   }>({ open: false, title: "", message: "", variant: "default", onConfirm: () => {} });
 
   const { showToast } = useToast();
@@ -107,8 +112,8 @@ function App() {
     setLoading(true);
     try {
       await fn();
-    } catch {
-      showToast("操作失败，请重试", "error");
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "操作失败，请重试", "error");
     } finally {
       setLoading(false);
     }
@@ -121,6 +126,7 @@ function App() {
         title: "取消任务",
         message: `确定要取消任务 ${task.manga_id} 吗？取消后需要重新添加。`,
         variant: "danger",
+        confirmLabel: "取消任务",
         onConfirm: () => {
           setConfirmState((s) => ({ ...s, open: false }));
           void withLoading(async () => {
@@ -146,6 +152,46 @@ function App() {
       showToast(`已重试任务 ${task.manga_id}`, "success");
       await refreshAll();
     });
+  }
+
+  function handleClearCompleted(task?: Task) {
+    setConfirmState({
+      open: true,
+      title: task ? "清除任务记录" : "清除已完成任务",
+      message: task ? `清除作品 ${task.manga_id} 的已完成任务记录？资料库和本地文件会保留。` :
+        `清除全部 ${tasks.queueCounts.completed} 条已完成任务记录？资料库和本地文件会保留。`,
+      variant: "default",
+      confirmLabel: "清除记录",
+      onConfirm: () => {
+        setConfirmState((s) => ({ ...s, open: false }));
+        void withLoading(async () => {
+          const result = await clearCompletedTasksApi(task?.task_id);
+          await Promise.all([tasks.refresh(), library.refresh()]);
+          showToast(`已清除 ${result.deleted} 条任务记录`, "success");
+        });
+      },
+    });
+  }
+
+  async function handleDeleteLibrary(items: LibraryItem[], deleteFiles: boolean): Promise<string[]> {
+    setLoading(true);
+    try {
+      const result = await deleteLibraryApi(items.map((item) => item.manga_id), deleteFiles);
+      if (result.deleted.length) {
+        if (library.selectedLibraryId && result.deleted.includes(library.selectedLibraryId)) library.closeDetail();
+        await Promise.all([tasks.refresh(), library.refresh()]);
+        showToast(`已删除 ${result.deleted.length} 项${deleteFiles ? "及其本地文件" : "资料记录，本地文件已保留"}`, "success");
+      }
+      if (result.failed.length) {
+        showToast(result.failed.map((item) => `${item.manga_id}：${item.error}`).slice(0, 3).join("；"), "warning");
+      }
+      return result.deleted;
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : "删除失败，请重试", "error");
+      return [];
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleVerify(item: typeof library.libraryItems[0]) {
@@ -219,13 +265,13 @@ function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className="app-shell dashboard-shell">
       <Sidebar
         activeView={activeView}
-        setActiveView={setActiveView}
+        setActiveView={(view) => { setQueueOpenDetail(false); setLibraryOpenDetail(false); if (view === "settings" || activeView === "settings") setSearchQuery(""); setActiveView(view); }}
         wsStatus={wsStatus}
         navCounts={navCounts}
-        queueActive={tasks.queueCounts.active}
+        runningCount={tasks.runningTasks.length}
         onAddTask={() => setAddPanelOpen(true)}
       />
 
@@ -236,7 +282,7 @@ function App() {
             <label className="search">
               <Search size={15} />
               <span className="sr-only">搜索</span>
-              <input placeholder="搜索 ID、标题、状态" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+              <input placeholder={activeView === "settings" ? "搜索设置项" : "搜索 ID、标题、状态"} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
             </label>
           </div>
         </header>
@@ -250,10 +296,18 @@ function App() {
           {activeView === "dashboard" && (
             <DashboardPage
               tasks={tasks.tasks}
-              runningTasks={tasks.runningTasks}
+              libraryItems={library.libraryItems}
               recentActivity={logs.recentActivity}
-              initialLoading={tasks.initialLoading}
-              onNavigateTasks={() => setActiveView("tasks")}
+              initialLoading={tasks.initialLoading || library.initialLoading || logs.initialLoading}
+              loading={loading}
+              wsStatus={wsStatus}
+              searchQuery={searchQuery}
+              onAddTask={() => setAddPanelOpen(true)}
+              onRefresh={() => withLoading(refreshAll)}
+              onNavigateTasks={(filter = "all") => { setSearchQuery(""); setQueueOpenDetail(false); setQueueTab(filter); setActiveView("tasks"); }}
+              onNavigateLibrary={() => { setSearchQuery(""); setLibraryOpenDetail(false); setActiveView("library"); }}
+              onOpenTask={(task) => { setSearchQuery(""); setQueueOpenDetail(true); tasks.setSelectedTaskId(task.task_id); setQueueTab("all"); setActiveView("tasks"); }}
+              onOpenLibrary={(item) => { setSearchQuery(""); setLibraryOpenDetail(true); setActiveView("library"); void withLoading(() => library.openDetail(item)); }}
               onRetryTask={handleRetryTask}
             />
           )}
@@ -269,10 +323,16 @@ function App() {
               loading={loading}
               initialLoading={tasks.initialLoading}
               onTaskSelect={tasks.setSelectedTaskId}
-              onRefresh={tasks.refresh}
-              onRefreshLogs={logs.refresh}
+              wsStatus={wsStatus}
+              onAddTask={() => setAddPanelOpen(true)}
+              onRefresh={() => withLoading(tasks.refresh)}
+              onRefreshLogs={() => withLoading(logs.refresh)}
               onControl={handleControlTask}
               onRetry={handleRetryTask}
+              onClearCompleted={handleClearCompleted}
+              activeTab={queueTab}
+              onTabChange={setQueueTab}
+              openSelectedDetail={queueOpenDetail}
             />
           )}
 
@@ -285,6 +345,11 @@ function App() {
               selectedProblemFileCount={library.selectedProblemFileCount}
               libraryCounts={library.libraryCounts}
               libraryDetailLoading={library.libraryDetailLoading}
+              libraryDetailError={library.libraryDetailError}
+              wsStatus={wsStatus}
+              onAddTask={() => setAddPanelOpen(true)}
+              onClearSearch={() => setSearchQuery("")}
+              openSelectedDetail={libraryOpenDetail}
               showOnlyProblemFiles={library.showOnlyProblemFiles}
               noImageMode={noImageMode}
               searchQuery={searchQuery}
@@ -293,13 +358,14 @@ function App() {
               sortBy={library.sortBy}
               sortOrder={library.sortOrder}
               viewMode={library.viewMode}
-              onOpenDetail={library.openDetail}
+              onOpenDetail={(item) => withLoading(() => library.openDetail(item))}
               onCloseDetail={library.closeDetail}
               onVerify={handleVerify}
               onZip={handleZip}
               onRetryFailed={handleRetryFailed}
-              onRefresh={library.refresh}
-              onRefreshDetail={() => { if (library.selectedLibraryId) void library.loadDetail(library.selectedLibraryId); }}
+              onDelete={handleDeleteLibrary}
+              onRefresh={() => withLoading(library.refresh)}
+              onRefreshDetail={() => { const id = library.selectedLibraryId; if (id) void withLoading(() => library.loadDetail(id)); }}
               setShowOnlyProblemFiles={library.setShowOnlyProblemFiles}
               onSortChange={library.setSortBy}
               onToggleSortOrder={() => library.setSortOrder(library.sortOrder === "desc" ? "asc" : "desc")}
@@ -310,10 +376,20 @@ function App() {
           {activeView === "settings" && (
             <SettingsPage
               config={config.config}
+              savedConfig={config.savedConfig}
+              initialLoading={config.initialLoading}
+              loadError={config.loadError}
+              saveError={config.saveError}
+              saveFeedback={config.saveFeedback}
+              dirtyFields={config.dirtyFields}
+              wsStatus={wsStatus}
+              searchQuery={searchQuery}
+              onClearSearch={() => setSearchQuery("")}
               loading={loading}
               noImageMode={noImageMode}
-              onRefresh={config.refresh}
+              onRefresh={() => withLoading(config.refresh)}
               onSave={handleSaveConfig}
+              onDiscard={config.discard}
               onGenerateToken={handleGenerateToken}
               onToggleNoImage={setNoImageMode}
               updateConfig={config.updateConfig}
@@ -334,7 +410,7 @@ function App() {
         title={confirmState.title}
         message={confirmState.message}
         variant={confirmState.variant}
-        confirmLabel={confirmState.variant === "danger" ? "取消任务" : "确认"}
+        confirmLabel={confirmState.confirmLabel ?? "确认"}
         onConfirm={confirmState.onConfirm}
         onCancel={() => setConfirmState((s) => ({ ...s, open: false }))}
       />

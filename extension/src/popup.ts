@@ -1,270 +1,147 @@
-import { apiFetch, extractMangaId, getSettings, type PageInfo, type ExtensionSettings } from "./shared.js";
+import { apiFetch, connectionErrorMessage, extractMangaId, getSettings, type PageInfo, type ExtensionSettings } from "./shared.js";
+import { initConnectionEditor } from "./connection.js";
 
-// ── DOM refs ───────────────────────────────────────────────────────────
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
-
-const statusBadge = $<HTMLSpanElement>("status-badge");
-const serverUrlEl = $<HTMLElement>("server-url");
-const statLibrary = $<HTMLElement>("stat-library");
-const statActive = $<HTMLElement>("stat-active");
-const statCompleted = $<HTMLElement>("stat-completed");
-const taskListEl = $<HTMLElement>("task-list");
-const refreshBtn = $<HTMLButtonElement>("refresh-btn");
-const pageCard = $<HTMLElement>("page-card");
-const pageTitle = $<HTMLElement>("page-title");
-const pageMeta = $<HTMLElement>("page-meta");
-const submitBtn = $<HTMLButtonElement>("submit");
-const openAdminBtn = $<HTMLButtonElement>("open-admin");
-const settingsToggle = $<HTMLButtonElement>("settings-toggle");
-const settingsPanel = $<HTMLElement>("settings-panel");
-const inputServer = $<HTMLInputElement>("input-server");
-const inputAdmin = $<HTMLInputElement>("input-admin");
-const inputToken = $<HTMLInputElement>("input-token");
-const btnVisibility = $<HTMLButtonElement>("btn-visibility");
-const btnPaste = $<HTMLButtonElement>("btn-paste");
-const btnClear = $<HTMLButtonElement>("btn-clear");
-const btnSave = $<HTMLButtonElement>("btn-save");
-const settingsMsg = $<HTMLElement>("settings-msg");
-
-// ── State ──────────────────────────────────────────────────────────────
+const statusBadge = $("status-badge"), serverUrl = $("server-url"), notice = $("connection-notice");
+const list = $("task-list"), refresh = $<HTMLButtonElement>("refresh-btn"), pageTitle = $("page-title"), pageMeta = $("page-meta"), pageState = $("page-state"), feedback = $("page-feedback");
+const submit = $<HTMLButtonElement>("submit"), settingsPanel = $("settings-panel"), toggle = $<HTMLButtonElement>("settings-toggle");
+const activeStatuses = ["running", "queued", "pending", "paused"];
+type TaskItem = { task_id: string; manga_id: string; title: string; status: string; stage: string; progress_current: number; progress_total: number; last_error?: string | null };
+type ItemStatus = { manga_id: string; status: string; task_id: string | null };
 let currentPage: PageInfo = { mangaId: null, url: "", title: "" };
 let currentSettings: ExtensionSettings | null = null;
-
-type ItemStatus = { manga_id: string; status: string; task_id: string | null };
-type TaskItem = {
-  task_id: string;
-  manga_id: string;
-  title: string;
-  status: string;
-  stage: string;
-  progress_current: number;
-  progress_total: number;
-};
-type LibraryResponse = { items: unknown[]; total: number };
-type TasksResponse = { items: TaskItem[]; total: number };
-
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+let connected = false, refreshing = false, submitting = false;
+let taskView: "active" | "attention" = "active";
+let latestTasks: TaskItem[] = [];
+let dashboardError = "";
+const labels: Record<string, string> = { ready: "可加入", pending: "待确认", queued: "排队中", running: "运行中", paused: "已暂停", partial: "部分完成", completed: "已完成", failed: "失败", cancelled: "已取消" };
+const stages: Record<string, string> = { none: "等待", fetching_info: "获取信息", fetching_pages: "获取目录", resolving_images: "解析图片", downloading: "下载图片", retrying_failed_images: "修复图片", verifying: "校验", zipping: "打包", done: "完成" };
+const icon = (path: string, className = "") => `<svg class="${className}" viewBox="0 0 24 24" aria-hidden="true">${path}</svg>`;
+const arrow = icon('<path d="m9 6 6 6-6 6"/>', "task-chevron");
+const download = icon('<path d="M12 3v12m-4-4 4 4 4-4M5 16v4h14v-4"/>');
+const warning = icon('<path d="m12 3 10 18H2L12 3Z"/><path d="M12 9v4m0 4h.01"/>');
+function escapeHtml(value: string) { return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;"); }
+function badgeClass(status: string) { return status === "completed" ? "badge-green" : status === "failed" ? "badge-red" : ["running", "queued", "ready"].includes(status) ? "badge-blue" : "badge-orange"; }
+async function openAdmin() {
+  try { await chrome.tabs.create({ url: (await getSettings()).adminUrl }); }
+  catch { feedback.textContent = "无法打开后台，请检查连接设置。"; }
 }
 
-// ── Status helpers ─────────────────────────────────────────────────────
-const statusLabels: Record<string, string> = {
-  ready: "可加入", pending: "待确认", queued: "排队中", running: "下载中",
-  paused: "已暂停", partial: "部分完成", completed: "已完成", failed: "失败", cancelled: "已取消",
-};
-const label = (s: string) => statusLabels[s] ?? s;
-
-function badgeClass(s: string): string {
-  if (s === "已连接") return "badge-green";
-  if (s === "离线") return "badge-red";
-  return "badge-orange";
-}
-
-function taskBadgeClass(s: string): string {
-  if (["running", "queued"].includes(s)) return "badge-blue";
-  if (s === "paused") return "badge-orange";
-  if (s === "completed") return "badge-green";
-  if (s === "failed") return "badge-red";
-  return "badge-orange";
-}
-
-// ── Server detection ───────────────────────────────────────────────────
-async function detectServer(): Promise<boolean> {
+async function detectServer() {
   try {
-    const settings = await getSettings();
-    currentSettings = settings;
-    await apiFetch("/api/extension/status");
-    statusBadge.textContent = "已连接";
-    statusBadge.className = "badge badge-green";
-    serverUrlEl.textContent = settings.serverUrl;
-    return true;
-  } catch {
-    statusBadge.textContent = "离线";
-    statusBadge.className = "badge badge-red";
-    serverUrlEl.textContent = currentSettings?.serverUrl ?? "后台未连接";
-    return false;
+    currentSettings = await getSettings();
+    serverUrl.textContent = currentSettings.serverUrl;
+    serverUrl.title = currentSettings.serverUrl;
+    await apiFetch("/api/extension/status", { signal: AbortSignal.timeout(8000) });
+    statusBadge.textContent = "已连接"; statusBadge.className = "badge connection-badge badge-green";
+    notice.hidden = true; return true;
+  } catch (error) {
+    const unauthorized = error instanceof Error && /HTTP (401|403)\b/.test(error.message);
+    statusBadge.textContent = unauthorized ? "未配对" : "离线";
+    statusBadge.className = `badge connection-badge ${unauthorized ? "badge-orange" : "badge-red"}`;
+    serverUrl.textContent = currentSettings?.serverUrl || "后台未连接";
+    notice.textContent = connectionErrorMessage(error); notice.hidden = false; return false;
   }
 }
 
-// ── Stats ──────────────────────────────────────────────────────────────
-async function fetchStats(): Promise<void> {
+function empty(message: string) { list.innerHTML = `<div class="empty-text">${download}<span>${escapeHtml(message)}</span></div>`; }
+function clearDashboard(message: string) {
+  latestTasks = []; dashboardError = message;
+  for (const id of ["stat-library", "stat-active", "stat-completed", "active-count", "attention-count"]) $(id).textContent = "—";
+  $("task-count").textContent = ""; $("queue-breakdown").textContent = "状态暂不可用"; empty(message);
+}
+function renderTasks() {
+  if (dashboardError) { empty(dashboardError); return; }
+  const scroll = list.scrollTop;
+  const items = latestTasks.filter((task) => taskView === "active" ? activeStatuses.includes(task.status) : ["failed", "partial"].includes(task.status));
+  $("task-count").textContent = `${items.length} 项`;
+  if (!items.length) { empty(taskView === "active" ? "当前没有进行中的任务" : "暂无待处理问题"); return; }
+  list.innerHTML = items.map((task) => {
+    const hasProgress = task.progress_total > 0;
+    const percent = Math.max(0, Math.min(100, Math.round(task.progress_current / task.progress_total * 100)));
+    const name = escapeHtml(task.title || `作品 ${task.manga_id}`), stage = stages[task.stage] || task.stage;
+    const unit = task.stage === "fetching_pages" ? "目录页" : task.stage === "resolving_images" ? "图片页" : "张图片";
+    return `<button type="button" class="task-item" aria-label="在后台查看作品 ${escapeHtml(task.manga_id)}"><span class="task-symbol ${taskView === "attention" ? "attention" : ""}">${taskView === "attention" ? warning : download}</span><span class="task-copy"><span class="task-top"><span class="task-name" title="${name}">${name}</span><span class="badge ${badgeClass(task.status)}">${labels[task.status] || escapeHtml(task.status)}</span></span><span class="task-meta"><span>ID ${escapeHtml(task.manga_id)}</span><span class="task-progress">${hasProgress ? `${task.progress_current} / ${task.progress_total} ${unit}` : escapeHtml(stage)}</span>${hasProgress ? `<span class="progress-percent">${percent}%</span>` : ""}</span>${hasProgress ? `<span class="progress-bar" role="progressbar" aria-label="当前阶段" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><span class="progress-fill" style="display:block;width:${percent}%"></span></span>` : ""}${taskView === "attention" && task.last_error ? `<span class="task-error">${escapeHtml(task.last_error)}</span>` : ""}</span>${arrow}</button>`;
+  }).join("");
+  list.scrollTop = scroll;
+}
+async function fetchDashboard() {
   try {
-    const [lib, tasks] = await Promise.all([
-      apiFetch<LibraryResponse>("/api/library"),
-      apiFetch<TasksResponse>("/api/tasks"),
-    ]);
-    statLibrary.textContent = String(lib.total ?? 0);
-    const items = tasks.items ?? [];
-    statActive.textContent = String(items.filter((t) => ["running", "queued", "pending", "paused"].includes(t.status)).length);
-    statCompleted.textContent = String(items.filter((t) => t.status === "completed").length);
-  } catch {
-    statLibrary.textContent = "-";
-    statActive.textContent = "-";
-    statCompleted.textContent = "-";
-  }
+    const [library, tasks] = await Promise.all([apiFetch<{ total: number }>("/api/library"), apiFetch<{ items: TaskItem[] }>("/api/tasks")]);
+    dashboardError = "";
+    latestTasks = tasks.items ?? [];
+    const active = latestTasks.filter((task) => activeStatuses.includes(task.status));
+    $("stat-library").textContent = String(library.total); $("stat-active").textContent = String(active.length);
+    $("stat-completed").textContent = String(latestTasks.filter((task) => task.status === "completed").length);
+    $("active-count").textContent = String(active.length); $("attention-count").textContent = String(latestTasks.filter((task) => ["failed", "partial"].includes(task.status)).length);
+    $("queue-breakdown").textContent = `${active.filter((task) => task.status === "running").length} 运行 · ${active.filter((task) => ["queued", "pending"].includes(task.status)).length} 等待 · ${active.filter((task) => task.status === "paused").length} 暂停`;
+    renderTasks();
+  } catch { clearDashboard("任务加载失败，请刷新后重试"); }
 }
 
-// ── Task list ──────────────────────────────────────────────────────────
-async function fetchTasks(): Promise<void> {
-  try {
-    const data = await apiFetch<TasksResponse>("/api/tasks");
-    const items = (data.items ?? []).filter((t) => ["running", "queued", "pending", "paused"].includes(t.status));
-    if (items.length === 0) {
-      taskListEl.innerHTML = '<p class="empty-text">暂无进行中的任务</p>';
-      return;
-    }
-    taskListEl.innerHTML = items.map((t) => {
-      const pct = t.progress_total > 0 ? Math.round((t.progress_current / t.progress_total) * 100) : 0;
-      const doneClass = pct >= 100 ? "done" : "";
-      const name = escapeHtml(t.title || t.manga_id);
-      return `
-        <div class="task-item">
-          <div class="task-top">
-            <span class="task-name" title="${name}">${name}</span>
-            <span class="badge ${taskBadgeClass(t.status)}">${label(t.status)}</span>
-          </div>
-          <div class="task-meta">
-            <span>${t.manga_id}</span>
-            ${t.progress_total > 0 ? `<span>${t.progress_current}/${t.progress_total}</span>` : ""}
-            <span>${pct}%</span>
-          </div>
-          ${t.progress_total > 0 ? `
-            <div class="progress-bar">
-              <div class="progress-fill ${doneClass}" style="width:${pct}%"></div>
-            </div>` : ""}
-        </div>`;
-    }).join("");
-  } catch {
-    taskListEl.innerHTML = '<p class="empty-text">加载失败</p>';
-  }
+function showItem(item: ItemStatus) {
+  pageState.textContent = labels[item.status] || item.status; pageState.className = `badge ${badgeClass(item.status)}`;
+  pageMeta.textContent = `ID ${item.manga_id}`;
+  const blocked = ["pending", "queued", "running", "paused", "completed"].includes(item.status);
+  submit.disabled = blocked || !connected || submitting;
+  if (!submitting) submit.textContent = item.status === "completed" ? "已在资料库" : item.status === "paused" ? "已暂停" : blocked ? "已在队列" : ["partial", "failed", "cancelled"].includes(item.status) ? "重新加入" : "加入队列";
+  feedback.textContent = item.status === "paused" ? "请在后台继续这个任务。" : "";
 }
-
-// ── Page detection ─────────────────────────────────────────────────────
-async function detectPage(): Promise<void> {
+async function detectPage() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   const url = tab?.url || "";
-  currentPage = { mangaId: extractMangaId(url), url, title: tab?.title || "" };
-
-  if (!currentPage.mangaId) {
-    pageCard.style.display = "none";
-    return;
-  }
-  pageCard.style.display = "";
-  pageTitle.textContent = currentPage.title || "当前页面";
-  pageMeta.textContent = `ID ${currentPage.mangaId}`;
-  submitBtn.disabled = false;
-
-  try {
-    const item = await apiFetch<ItemStatus>(`/api/extension/item/${currentPage.mangaId}`);
-    pageMeta.textContent = `ID ${item.manga_id} · ${label(item.status)}`;
-  } catch {
-    pageMeta.textContent = `ID ${currentPage.mangaId}`;
-  }
+  let id: string | null = null;
+  try { const parsed = new URL(url); if (["http:", "https:"].includes(parsed.protocol) && /^(www\.)?wnacg\.(com|org)$/.test(parsed.hostname) && /^\/photos-index(?:-page-\d+)?-aid-\d+\.html$/.test(parsed.pathname)) id = extractMangaId(url); } catch { /* unsupported tab */ }
+  currentPage = { mangaId: id, url, title: tab?.title || "" };
+  pageTitle.title = id ? currentPage.title : "";
+  submit.disabled = true; submit.textContent = "加入队列"; feedback.textContent = "";
+  if (!id) { pageTitle.textContent = "当前页面没有可识别的作品"; pageMeta.textContent = "在原站详情页使用此入口"; pageState.textContent = "未识别"; pageState.className = "badge badge-orange"; submit.textContent = "等待识别"; return; }
+  pageTitle.textContent = currentPage.title || `作品 ${id}`; pageTitle.title = currentPage.title; pageMeta.textContent = `ID ${id}`;
+  if (!connected) { pageState.textContent = "未连接"; pageState.className = "badge badge-orange"; submit.textContent = "加入队列"; return; }
+  try { showItem(await apiFetch<ItemStatus>(`/api/extension/item/${id}`)); }
+  catch { pageState.textContent = "查询失败"; pageState.className = "badge badge-orange"; feedback.textContent = "暂时无法确认本地状态，请刷新后重试。"; }
 }
 
-// ── Submit ─────────────────────────────────────────────────────────────
-submitBtn.addEventListener("click", async () => {
-  if (!currentPage.mangaId) return;
-  submitBtn.disabled = true;
-  submitBtn.textContent = "提交中…";
+submit.addEventListener("click", async () => {
+  if (!currentPage.mangaId || submit.disabled || submitting || refreshing || !connected) return;
+  submitting = true; submit.disabled = true; submit.textContent = "提交中…"; feedback.textContent = "";
   try {
-    const resp = await chrome.runtime.sendMessage({
-      type: "SUBMIT_PAGE",
-      payload: {
-        manga_id: currentPage.mangaId,
-        url: currentPage.url,
-        title_hint: currentPage.title,
-        page_type: "detail",
-      },
-    });
-    if (resp?.ok) {
-      submitBtn.textContent = "✓ 已加入";
-      void refreshAll();
-    } else {
-      submitBtn.textContent = "加入队列";
-      submitBtn.disabled = false;
-      pageMeta.textContent = resp?.error || "发送失败";
-    }
-  } catch {
-    submitBtn.textContent = "加入队列";
-    submitBtn.disabled = false;
-  }
+    const response = await chrome.runtime.sendMessage({ type: "SUBMIT_PAGE", payload: { manga_id: currentPage.mangaId, url: currentPage.url, title_hint: currentPage.title, page_type: "detail" } });
+    if (!response?.ok) throw new Error("submit failed");
+    submitting = false; await refreshAll();
+  } catch { submitting = false; submit.textContent = "重试加入"; submit.disabled = false; feedback.textContent = "提交失败，请重试或检查后台连接。"; }
 });
-
-openAdminBtn.addEventListener("click", async () => {
-  const settings = await getSettings();
-  await chrome.tabs.create({ url: settings.adminUrl });
-});
-
-// ── Settings panel ─────────────────────────────────────────────────────
-settingsToggle.addEventListener("click", () => {
-  settingsPanel.classList.toggle("open");
-});
-
-// Load existing settings into inputs
-void (async () => {
-  const settings = await getSettings();
-  inputServer.value = settings.serverUrl;
-  inputAdmin.value = settings.adminUrl;
-  if (settings.token) {
-    inputToken.value = settings.token;
-  }
-})();
-
-// Toggle password visibility
-btnVisibility.addEventListener("click", () => {
-  const isPassword = inputToken.type === "password";
-  inputToken.type = isPassword ? "text" : "password";
-  btnVisibility.textContent = isPassword ? "🙈" : "👁";
-});
-
-// Paste from clipboard
-btnPaste.addEventListener("click", async () => {
-  try {
-    const text = await navigator.clipboard.readText();
-    inputToken.value = text.trim();
-    settingsMsg.textContent = "已粘贴";
-    settingsMsg.className = "msg msg-ok";
-  } catch {
-    settingsMsg.textContent = "无法读取剪贴板";
-    settingsMsg.className = "msg msg-err";
-  }
-});
-
-// Clear token
-btnClear.addEventListener("click", () => {
-  inputToken.value = "";
-  settingsMsg.textContent = "已清除，点击保存生效";
-  settingsMsg.className = "msg msg-ok";
-});
-
-// Save settings
-btnSave.addEventListener("click", async () => {
-  const serverUrl = inputServer.value.trim() || "http://127.0.0.1:8080";
-  const adminUrl = inputAdmin.value.trim() || "http://127.0.0.1:5173";
-  const token = inputToken.value.trim();
-  await chrome.storage.local.set({ serverUrl, adminUrl, token });
-  settingsMsg.textContent = "已保存";
-  settingsMsg.className = "msg msg-ok";
-  // Re-detect with new settings
-  void refreshAll();
-});
-
-// ── Refresh ────────────────────────────────────────────────────────────
-refreshBtn.addEventListener("click", () => void refreshAll());
-
-async function refreshAll(): Promise<void> {
-  const ok = await detectServer();
-  if (ok) {
-    await Promise.all([fetchStats(), fetchTasks(), detectPage()]);
-  }
+$("open-admin").addEventListener("click", () => void openAdmin());
+list.addEventListener("click", (event) => { if ((event.target as HTMLElement).closest(".task-item")) void openAdmin(); });
+for (const view of ["active", "attention"] as const) {
+  $("tab-" + view).addEventListener("click", () => {
+    taskView = view; list.setAttribute("aria-labelledby", "tab-" + view);
+    for (const key of ["active", "attention"]) { const tab = $("tab-" + key); tab.setAttribute("aria-selected", String(view === key)); tab.tabIndex = view === key ? 0 : -1; }
+    renderTasks();
+  });
 }
-
-// ── Auto-refresh every 5s ──────────────────────────────────────────────
+document.querySelector(".task-tabs")!.addEventListener("keydown", (event) => {
+  const key = (event as KeyboardEvent).key;
+  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(key)) return;
+  event.preventDefault();
+  const next = key === "Home" ? "active" : key === "End" ? "attention" : taskView === "active" ? "attention" : "active";
+  $("tab-" + next).click(); $("tab-" + next).focus();
+});
+toggle.addEventListener("click", () => {
+  const open = settingsPanel.classList.toggle("open");
+  $("popup").classList.toggle("settings-open", open); toggle.setAttribute("aria-expanded", String(open));
+  $("settings-label").textContent = open ? "返回下载概览" : "连接设置";
+  if (open) $("input-server").focus();
+  else { $("input-token").setAttribute("type", "password"); const visibility = $("btn-visibility"); visibility.setAttribute("aria-pressed", "false"); visibility.setAttribute("aria-label", "显示 Token"); visibility.title = "显示 Token"; }
+});
+void initConnectionEditor({ onTest: (result) => { if (result.saved) void refreshAll(); } });
+refresh.addEventListener("click", () => void refreshAll());
+async function refreshAll() {
+  if (refreshing || submitting) return;
+  refreshing = true; submit.disabled = true; refresh.disabled = true; refresh.querySelector("svg")?.classList.add("spin"); list.setAttribute("aria-busy", "true");
+  try { connected = await detectServer(); if (connected) await Promise.all([fetchDashboard(), detectPage()]); else { clearDashboard("后台未连接，请检查连接设置"); await detectPage(); } }
+  catch { clearDashboard("状态读取失败，请刷新后重试"); }
+  finally { refreshing = false; refresh.disabled = false; refresh.querySelector("svg")?.classList.remove("spin"); list.setAttribute("aria-busy", "false"); }
+}
 void refreshAll();
-setInterval(() => void refreshAll(), 5000);
+setInterval(() => { if (!settingsPanel.classList.contains("open") && !document.hidden) void refreshAll(); }, 5000);

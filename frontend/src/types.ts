@@ -94,6 +94,19 @@ export type LibraryList = {
   total: number;
 };
 
+export type LibraryBatchFailure = { manga_id: string; error: string };
+
+export type LibraryDownloadResult = {
+  ready: { manga_id: string; filename: string; url: string }[];
+  failed: LibraryBatchFailure[];
+};
+
+export type LibraryDeleteResult = {
+  deleted: string[];
+  failed: LibraryBatchFailure[];
+  delete_files: boolean;
+};
+
 export type LibraryRetryFailedResult = {
   status: string;
   problem_files: number;
@@ -130,8 +143,8 @@ export type WsMessage = TaskProgressMessage | SystemAlertMessage | TaskLogMessag
 
 export type WsStatus = "connecting" | "connected" | "fallback";
 export type ViewKey = "dashboard" | "tasks" | "library" | "settings";
-export type QueueFilter = "all" | "active" | "failed" | "partial" | "completed";
-export type LibraryFilter = "all" | "completed" | "partial" | "failed" | "missing" | "zipped" | "unzipped";
+export type QueueFilter = "all" | "active" | "failed" | "partial" | "completed" | "attention";
+export type LibraryFilter = "all" | "completed" | "partial" | "failed" | "missing" | "zipped" | "unzipped" | "attention" | "active";
 export type LibrarySortKey = "updated_at" | "title" | "completeness" | "pic_count" | "zip_size";
 export type LibraryViewMode = "card" | "list";
 

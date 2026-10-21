@@ -218,6 +218,16 @@ Response data：
 }
 ```
 
+### DELETE /api/tasks/completed
+
+清除全部 `completed` 任务记录，返回 `{"deleted": 10, "task_ids": ["task_01"]}`。
+保留资料库元信息、下载文件、ZIP 和日志；重复清理返回 `deleted: 0`。
+
+### DELETE /api/tasks/{task_id}
+
+仅清除指定的已完成任务。不存在返回 404，非 `completed` 返回 409。
+清除后扩展仍可从资料库识别作品的本地状态。
+
 ### POST /api/tasks/{task_id}/pause
 
 暂停任务。
@@ -373,6 +383,42 @@ missing
 invalid
 failed
 ```
+
+### POST /api/library/delete
+
+请求 `{"manga_ids": ["123456", "123457"], "delete_files": false}`。
+`manga_ids` 为 1–1000 个数字 ID，自动去重；返回 `deleted` ID 列表和逐项 `failed`（包含 `manga_id`、`error`）。
+
+- 默认只删除资料库记录、目录/图片详情记录、文件索引和关联的已结束任务，保留本地文件及日志。
+- `delete_files: true` 同时删除下载根目录中 Manga、Original、Zip 下属于这些 ID 的文件和目录，包括旧标题目录。界面必须二次确认，文件删除选项默认不勾选。
+- 有 pending/queued/running/paused 任务或执行器尚未退出的作品会跳过。符号链接和越出下载目录的路径会被拒绝。
+- 文件删除失败时保留数据库记录并报告原因；同一批其他作品继续处理。
+
+### DELETE /api/library/{manga_id}?delete_files=false
+
+单项删除，语义同批量删除。不存在返回 404，有活跃任务或文件系统操作受阻返回 409。
+
+### POST /api/library/downloads
+
+请求 `{"manga_ids": ["123456", "123457"]}`，准备所选作品的独立文件下载。
+
+Response data：
+
+```json
+{
+  "ready": [
+    {"manga_id": "123456", "filename": "[123456] 作品.zip", "url": "/api/library/123456/download"}
+  ],
+  "failed": [{"manga_id": "123457", "error": "图片缺失或校验失败，请先在后台补全后再下载"}]
+}
+```
+
+每个作品各一个 ZIP，不合成总包。浏览器逐个请求 `ready` 中的地址，勾选十项可发起十个独立文件下载；界面保留逐项下载链接，以便浏览器拦截连续下载时手动重试。
+
+### GET /api/library/{manga_id}/download
+
+返回 `application/zip` 文件响应及附件文件名，不使用 JSON 响应包装。仅读取已下载的本地图片；图片完整有效时复用校验通过的 ZIP，缺失或损坏的 ZIP 会从本地文件重建。不会请求原站或创建下载任务，也不会因导出而改写任务完成状态。
+不存在返回 404，存在活跃任务、图片缺失/无效或路径不安全时返回 409。
 
 ### POST /api/library/{manga_id}/verify
 

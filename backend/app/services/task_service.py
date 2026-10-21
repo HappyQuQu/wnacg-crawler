@@ -7,6 +7,7 @@ from backend.app.core.schemas import (
 )
 from backend.app.db.database import SessionLocal
 from backend.app.db.repository import MangaRepository, TaskRepository, task_to_dict
+from backend.app.services.library_service import library_service
 
 LEGAL_TRANSITIONS = {
     "pending": {"queued", "cancelled"},
@@ -31,6 +32,22 @@ class InvalidTaskTransition(ValueError):
 
 
 class TaskService:
+    async def clear_completed(self) -> dict:
+        async with SessionLocal() as session:
+            task_ids = await TaskRepository(session).delete_completed()
+            return {"deleted": len(task_ids), "task_ids": task_ids}
+
+    async def delete_completed(self, task_id: str) -> dict:
+        async with SessionLocal() as session:
+            repo = TaskRepository(session)
+            task = await self._require(repo, task_id)
+            if task.status != "completed":
+                raise InvalidTaskTransition(task_id, task.status, "deleted")
+            deleted = await repo.delete_completed(task_id)
+            if not deleted:
+                raise InvalidTaskTransition(task_id, "changed", "deleted")
+            return {"deleted": len(deleted), "task_ids": deleted}
+
     async def list(self, status: str | None = None) -> dict:
         async with SessionLocal() as session:
             repo = TaskRepository(session)
@@ -150,7 +167,12 @@ class TaskService:
             task = await repo.latest_for_manga(manga_id)
             if task:
                 return {"manga_id": manga_id, "status": task.status, "task_id": task.id}
-            return {"manga_id": manga_id, "status": "ready", "task_id": None}
+        item = await library_service.get(manga_id)
+        return {
+            "manga_id": manga_id,
+            "status": item["status"] if item else "ready",
+            "task_id": None,
+        }
 
     async def _enrich(self, session, result: dict) -> dict:
         manga = await MangaRepository(session).get_info(result["manga_id"])

@@ -41,6 +41,21 @@ async def get_task(task_id: str):
     return ApiResponse(data=task)
 
 
+@router.delete("/completed", response_model=ApiResponse)
+async def clear_completed_tasks():
+    return ApiResponse(data=await task_service.clear_completed())
+
+
+@router.delete("/{task_id}", response_model=ApiResponse)
+async def delete_completed_task(task_id: str):
+    try:
+        return ApiResponse(data=await task_service.delete_completed(task_id))
+    except KeyError:
+        raise HTTPException(status_code=404, detail="任务不存在") from None
+    except InvalidTaskTransition:
+        raise HTTPException(status_code=409, detail="只能清除已完成的任务") from None
+
+
 @router.post("/{task_id}/pause", response_model=ApiResponse)
 async def pause_task(task_id: str):
     try:

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import re
+import shutil
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -14,6 +16,7 @@ from backend.app.db.database import SessionLocal
 from backend.app.db.models import DownloadFile, DownloadTask, MangaInfo, MangaPicPage
 from backend.app.db.repository import FileRepository, MangaRepository, TaskRepository, task_to_dict
 from backend.app.services.archive_service import create_zip, is_complete_zip
+from backend.app.services.task_runner import task_runner
 
 ACTIVE_TASK_STATUSES = {"pending", "queued", "running", "paused"}
 MangaPicPages = list[MangaPicPage]
@@ -24,6 +27,91 @@ SortItems = list[dict]
 
 
 class LibraryService:
+    async def delete(self, manga_id: str, delete_files: bool = False) -> None:
+        _check_manga_id(manga_id)
+        async with SessionLocal() as session:
+            repo = MangaRepository(session)
+            await repo.lock_for_removal()
+            if await repo.get_info(manga_id) is None:
+                raise KeyError(manga_id)
+            tasks = TaskRepository(session)
+            related = await tasks.list_for_manga(manga_id)
+            if any(
+                task.status in ACTIVE_TASK_STATUSES or task_runner.is_running(task.id)
+                for task in related
+            ):
+                raise ValueError("仍有待处理、运行或暂停的任务，请先完成或取消任务")
+            if delete_files:
+                await asyncio.to_thread(
+                    _delete_owned_files, Path(get_settings().download_path), manga_id,
+                )
+            await tasks.delete_inactive_for_manga(manga_id)
+            await repo.delete(manga_id)
+            await session.commit()
+
+    async def delete_many(self, manga_ids: list[str], delete_files: bool = False) -> dict:
+        deleted: list[str] = []
+        failed: list[dict] = []
+        for manga_id in dict.fromkeys(manga_ids):
+            try:
+                await self.delete(manga_id, delete_files)
+                deleted.append(manga_id)
+            except KeyError:
+                failed.append({"manga_id": manga_id, "error": "资料库项目不存在"})
+            except (ValueError, OSError) as exc:
+                failed.append({"manga_id": manga_id, "error": str(exc)})
+        return {"deleted": deleted, "failed": failed, "delete_files": delete_files}
+
+    async def prepare_download(self, manga_id: str) -> Path:
+        _check_manga_id(manga_id)
+        base = Path(get_settings().download_path)
+        async with SessionLocal() as session:
+            repo = MangaRepository(session)
+            info = await repo.get_info(manga_id)
+            if info is None:
+                raise KeyError(manga_id)
+            related = await TaskRepository(session).list_for_manga(manga_id)
+            if any(
+                task.status in ACTIVE_TASK_STATUSES or task_runner.is_running(task.id)
+                for task in related
+            ):
+                raise ValueError("作品仍有活跃任务，请完成或取消任务后下载")
+            pages = await repo.list_pic_pages(manga_id)
+            files = await FileRepository(session).list_for_manga(manga_id)
+            for row in self._file_rows_sync(info, pages, files):
+                _check_owned_path(base, Path(row["file_path"]), manga_id, "Manga")
+            rows = await self._file_rows(info, pages, files, validate=True)
+            if not rows or any(row["status"] != "valid" for row in rows):
+                raise ValueError("图片缺失或校验失败，请先在后台补全后再下载")
+            paths = [Path(row["file_path"]) for row in rows]
+            for path in paths:
+                _check_owned_path(base, path, manga_id, "Manga")
+            target = zip_path(base, manga_id, info.title or manga_id)
+            _check_owned_path(base, target, manga_id, "Zip")
+            source = manga_dir(base, manga_id, info.title or manga_id)
+
+        if not await asyncio.to_thread(is_complete_zip, target, paths):
+            target.parent.mkdir(parents=True, exist_ok=True)
+            await asyncio.to_thread(create_zip, source, target, paths)
+        return target
+
+    async def prepare_downloads(self, manga_ids: list[str]) -> dict:
+        ready: list[dict] = []
+        failed: list[dict] = []
+        for manga_id in dict.fromkeys(manga_ids):
+            try:
+                target = await self.prepare_download(manga_id)
+                ready.append({
+                    "manga_id": manga_id,
+                    "filename": target.name,
+                    "url": f"/api/library/{manga_id}/download",
+                })
+            except KeyError:
+                failed.append({"manga_id": manga_id, "error": "资料库项目不存在"})
+            except (ValueError, OSError) as exc:
+                failed.append({"manga_id": manga_id, "error": str(exc)})
+        return {"ready": ready, "failed": failed}
+
     async def list(
         self,
         q: str | None = None,
@@ -347,6 +435,50 @@ def _expected_file_path(info: MangaInfo, page: MangaPicPage | None, pic_index: i
         safe_pic_num = safe_filename(page.pic_num, str(page.pic_index))
         filename = f"{page.pic_index:04d}_{safe_pic_num}{ext}"
     return manga_dir(Path(settings.download_path), info.id, title) / filename
+
+
+def _check_manga_id(manga_id: str) -> None:
+    if not re.fullmatch(r"\d+", manga_id):
+        raise ValueError("无效的作品 ID")
+
+
+def _check_owned_path(base: Path, path: Path, manga_id: str, category: str) -> None:
+    root = base / category
+    try:
+        relative = path.absolute().relative_to(root.absolute())
+    except ValueError:
+        raise ValueError("文件路径不属于该作品的下载目录") from None
+    expected_depth = 2 if category == "Manga" else 1
+    if (
+        len(relative.parts) != expected_depth
+        or not relative.parts[0].startswith(f"[{manga_id}] ")
+        or root.is_symlink()
+        or (root / relative.parts[0]).is_symlink()
+        or path.is_symlink()
+        or not path.resolve().is_relative_to(root.resolve())
+    ):
+        raise ValueError("文件路径不安全，拒绝操作")
+
+
+def _delete_owned_files(base: Path, manga_id: str) -> None:
+    targets: list[Path] = []
+    for category in ("Manga", "Original", "Zip"):
+        root = base / category
+        if root.is_symlink():
+            raise ValueError("下载分类目录是符号链接，拒绝删除")
+        if not root.exists():
+            continue
+        for path in root.iterdir():
+            if not path.name.startswith(f"[{manga_id}] "):
+                continue
+            if path.is_symlink() or not path.resolve().is_relative_to(root.resolve()):
+                raise ValueError("作品路径是符号链接或超出下载目录，拒绝删除")
+            targets.append(path)
+    for path in targets:
+        if path.is_dir():
+            shutil.rmtree(path)
+        else:
+            path.unlink(missing_ok=True)
 
 
 library_service = LibraryService()

@@ -1,4 +1,4 @@
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -37,6 +37,16 @@ class BatchTaskCreateRequest(BaseModel):
 
 class TaskRetryRequest(BaseModel):
     scope: str = "task"
+
+
+class LibrarySelectionRequest(BaseModel):
+    manga_ids: list[Annotated[str, Field(pattern=r"^\d+$")]] = Field(
+        min_length=1, max_length=1000,
+    )
+
+
+class LibraryDeleteRequest(LibrarySelectionRequest):
+    delete_files: bool = False
 
 
 class ExtensionSubmitRequest(BaseModel):

@@ -7,6 +7,8 @@ import type {
   LibraryList,
   LibraryRetryFailedResult,
   LibrarySortKey,
+  LibraryDownloadResult,
+  LibraryDeleteResult,
   LogList,
   AppConfig,
 } from "./types";
@@ -26,14 +28,32 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(`API response is not valid JSON: ${path} (${response.status})`);
   }
   if (!response.ok || !body.ok) {
-    const detail = body.error ? JSON.stringify(body.error) : response.statusText;
-    throw new Error(`API request failed: ${path} — ${detail}`);
+    const detail = body.error || (body as ApiResponse<T> & { detail?: unknown }).detail;
+    throw new Error(typeof detail === "string" ? detail : detail ? JSON.stringify(detail) : `请求失败（HTTP ${response.status}）`);
   }
   return body.data;
 }
 
 export async function fetchTasks(): Promise<TaskList> {
   return api<TaskList>("/api/tasks");
+}
+
+export async function clearCompletedTasksApi(taskId?: string): Promise<{ deleted: number; task_ids: string[] }> {
+  return api(`/api/tasks/${taskId ? encodeURIComponent(taskId) : "completed"}`, { method: "DELETE" });
+}
+
+export async function deleteLibraryApi(mangaIds: string[], deleteFiles: boolean): Promise<LibraryDeleteResult> {
+  return api("/api/library/delete", {
+    method: "POST",
+    body: JSON.stringify({ manga_ids: mangaIds, delete_files: deleteFiles }),
+  });
+}
+
+export async function prepareLibraryDownloadsApi(mangaIds: string[]): Promise<LibraryDownloadResult> {
+  return api("/api/library/downloads", {
+    method: "POST",
+    body: JSON.stringify({ manga_ids: mangaIds }),
+  });
 }
 
 export async function fetchLibrary(params?: {

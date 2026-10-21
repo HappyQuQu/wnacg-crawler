@@ -63,11 +63,12 @@ export function useTasks() {
     active: tasks.filter((t) => ["pending", "queued", "running", "paused"].includes(t.status)).length,
     failed: tasks.filter((t) => t.status === "failed").length,
     partial: tasks.filter((t) => t.status === "partial").length,
+    attention: tasks.filter((t) => ["failed", "partial"].includes(t.status)).length,
     completed: tasks.filter((t) => t.status === "completed").length,
   }), [tasks]);
 
   const runningTasks = useMemo(
-    () => tasks.filter((t) => ["running", "queued", "paused"].includes(t.status)).slice(0, 5),
+    () => tasks.filter((t) => t.status === "running"),
     [tasks]
   );
 

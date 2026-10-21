@@ -40,6 +40,9 @@ class TaskRunner:
     def __init__(self) -> None:
         self._running: set[str] = set()
 
+    def is_running(self, task_id: str) -> bool:
+        return task_id in self._running
+
     async def run_many(self, task_ids: Sequence[str]) -> None:
         await asyncio.gather(*(self.run(task_id) for task_id in task_ids))
 

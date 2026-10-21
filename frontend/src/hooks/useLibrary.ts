@@ -5,16 +5,19 @@ import { isProblemFile } from "../utils";
 
 export function useLibrary() {
   const [libraryItems, setLibraryItems] = useState<LibraryItem[]>([]);
+  const listVersion = useRef(0);
   const [selectedLibraryId, setSelectedLibraryId] = useState<string | null>(null);
   const [selectedLibraryItem, setSelectedLibraryItem] = useState<LibraryItem | null>(null);
   const [libraryDetailLoading, setLibraryDetailLoading] = useState(false);
+  const [libraryDetailError, setLibraryDetailError] = useState("");
+  const detailVersion = useRef(0);
   const [showOnlyProblemFiles, setShowOnlyProblemFiles] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [sortBy, setSortBy] = useState<LibrarySortKey>("updated_at");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [viewMode, setViewMode] = useState<LibraryViewMode>(() => {
     try {
-      return (localStorage.getItem("wnacg-library-view") as LibraryViewMode) || "card";
+      return localStorage.getItem("wnacg-library-view") === "list" ? "list" : "card";
     } catch {
       return "card";
     }
@@ -26,49 +29,64 @@ export function useLibrary() {
   }, []);
 
   const refresh = useCallback(async () => {
+    const version = ++listVersion.current;
     const data = await fetchLibrary({ sort_by: sortBy, sort_order: sortOrder });
-    setLibraryItems(data.items);
-    setInitialLoading(false);
+    if (version === listVersion.current) {
+      setLibraryItems(data.items);
+      setInitialLoading(false);
+    }
   }, [sortBy, sortOrder]);
 
   const loadDetail = useCallback(async (mangaId: string) => {
+    const version = ++detailVersion.current;
     setLibraryDetailLoading(true);
+    setLibraryDetailError("");
     try {
       const data = await fetchLibraryDetail(mangaId);
-      setSelectedLibraryItem(data);
+      if (version === detailVersion.current) setSelectedLibraryItem(data);
+    } catch (error) {
+      if (version === detailVersion.current) {
+        setLibraryDetailError(error instanceof Error ? error.message : "请稍后重试");
+      }
+      throw error;
     } finally {
-      setLibraryDetailLoading(false);
+      if (version === detailVersion.current) setLibraryDetailLoading(false);
     }
   }, []);
 
   const openDetail = useCallback(async (item: LibraryItem) => {
     setSelectedLibraryId(item.manga_id);
+    setSelectedLibraryItem(null);
+    setShowOnlyProblemFiles(false);
     await loadDetail(item.manga_id);
   }, [loadDetail]);
 
   const closeDetail = useCallback(() => {
+    detailVersion.current++;
+    setLibraryDetailLoading(false);
+    setLibraryDetailError("");
     setSelectedLibraryId(null);
     setSelectedLibraryItem(null);
   }, []);
 
   const verifyItem = useCallback(async (item: LibraryItem) => {
+    const version = detailVersion.current;
     const result = await verifyLibraryApi(item.manga_id);
-    setSelectedLibraryId(item.manga_id);
-    setSelectedLibraryItem(result);
+    if (version === detailVersion.current) setSelectedLibraryItem(result);
     return result;
   }, []);
 
   const zipItem = useCallback(async (item: LibraryItem) => {
+    const version = detailVersion.current;
     const result = await zipLibraryApi(item.manga_id);
-    setSelectedLibraryId(item.manga_id);
-    setSelectedLibraryItem(result);
+    if (version === detailVersion.current) setSelectedLibraryItem(result);
     return result;
   }, []);
 
   const retryFailed = useCallback(async (item: LibraryItem) => {
+    const version = detailVersion.current;
     const result = await retryFailedLibraryApi(item.manga_id);
-    setSelectedLibraryId(item.manga_id);
-    setSelectedLibraryItem(result.library);
+    if (version === detailVersion.current) setSelectedLibraryItem(result.library);
     return result;
   }, []);
 
@@ -92,24 +110,11 @@ export function useLibrary() {
     unzipped: libraryItems.filter((i) => !i.zip_exists).length,
   }), [libraryItems]);
 
-  const prevItemsRef = useRef<LibraryItem[]>([]);
   useEffect(() => {
-    const itemsChanged = prevItemsRef.current !== libraryItems;
-    prevItemsRef.current = libraryItems;
-
-    if (libraryItems.length === 0) {
-      setSelectedLibraryId(null);
-      setSelectedLibraryItem(null);
-      return;
+    if (!initialLoading && selectedLibraryId && !libraryItems.some((item) => item.manga_id === selectedLibraryId)) {
+      closeDetail();
     }
-    if (itemsChanged && (!selectedLibraryId || !libraryItems.some((i) => i.manga_id === selectedLibraryId))) {
-      setSelectedLibraryId(libraryItems[0].manga_id);
-    }
-  }, [libraryItems, selectedLibraryId]);
-
-  useEffect(() => {
-    if (selectedLibraryId) void loadDetail(selectedLibraryId);
-  }, [selectedLibraryId, loadDetail]);
+  }, [libraryItems, selectedLibraryId, initialLoading, closeDetail]);
 
   // Re-fetch when sort changes
   useEffect(() => {
@@ -123,6 +128,7 @@ export function useLibrary() {
     selectedLibraryFiles,
     selectedProblemFileCount,
     libraryDetailLoading,
+    libraryDetailError,
     showOnlyProblemFiles,
     setShowOnlyProblemFiles,
     libraryCounts,

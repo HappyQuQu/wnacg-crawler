@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from sqlalchemy import desc, func, or_, select
+from sqlalchemy import delete, desc, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.core.time import local_isoformat
@@ -16,6 +16,7 @@ from backend.app.db.models import (
 )
 
 DownloadTaskRows = list[DownloadTask]
+TaskIds = list[str]
 
 
 class MangaRepository:
@@ -25,6 +26,16 @@ class MangaRepository:
     async def get_info(self, manga_id: str) -> MangaInfo | None:
         result = await self.session.execute(select(MangaInfo).where(MangaInfo.id == manga_id))
         return result.scalar_one_or_none()
+
+    async def lock_for_removal(self) -> None:
+        # Hold SQLite's write lock while checking tasks and removing files, so a
+        # new task cannot be committed between the check and the removal.
+        await self.session.execute(text("BEGIN IMMEDIATE"))
+
+    async def delete(self, manga_id: str) -> None:
+        for model in (DownloadFile, MangaPicPage, MangaPage):
+            await self.session.execute(delete(model).where(model.manga_id == manga_id))
+        await self.session.execute(delete(MangaInfo).where(MangaInfo.id == manga_id))
 
     async def list_infos(self, q: str | None = None, status: str | None = None) -> list[MangaInfo]:
         stmt = select(MangaInfo).order_by(desc(MangaInfo.updated_at), desc(MangaInfo.created_at))
@@ -212,6 +223,12 @@ class TaskRepository:
         )
         return list(result.scalars().all())
 
+    async def list_for_manga(self, manga_id: str) -> DownloadTaskRows:
+        result = await self.session.execute(
+            select(DownloadTask).where(DownloadTask.manga_id == manga_id),
+        )
+        return list(result.scalars().all())
+
     async def list_failed_with_errors(self) -> DownloadTaskRows:
         result = await self.session.execute(
             select(DownloadTask)
@@ -226,6 +243,21 @@ class TaskRepository:
     async def get(self, task_id: str) -> DownloadTask | None:
         result = await self.session.execute(select(DownloadTask).where(DownloadTask.id == task_id))
         return result.scalar_one_or_none()
+
+    async def delete_completed(self, task_id: str | None = None) -> TaskIds:
+        stmt = delete(DownloadTask).where(DownloadTask.status == "completed")
+        if task_id is not None:
+            stmt = stmt.where(DownloadTask.id == task_id)
+        result = await self.session.execute(stmt.returning(DownloadTask.id))
+        task_ids = list(result.scalars().all())
+        await self.session.commit()
+        return task_ids
+
+    async def delete_inactive_for_manga(self, manga_id: str) -> None:
+        await self.session.execute(delete(DownloadTask).where(
+            DownloadTask.manga_id == manga_id,
+            DownloadTask.status.not_in(self.active_statuses),
+        ))
 
     async def latest_for_manga(self, manga_id: str) -> DownloadTask | None:
         result = await self.session.execute(

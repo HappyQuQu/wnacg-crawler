@@ -20,14 +20,14 @@ export function Sidebar({
   setActiveView,
   wsStatus,
   navCounts,
-  queueActive,
+  runningCount,
   onAddTask,
 }: {
   activeView: ViewKey;
   setActiveView: (view: ViewKey) => void;
   wsStatus: WsStatus;
   navCounts: Record<ViewKey, string>;
-  queueActive: number;
+  runningCount: number;
   onAddTask: () => void;
 }) {
   return (
@@ -67,8 +67,8 @@ export function Sidebar({
             {wsStatus === "connected" ? "实时同步" : "轮询中"}
           </span>
         </div>
-        {queueActive > 0 && (
-          <span className="sidebar-status-count">{queueActive} 个任务运行中</span>
+        {runningCount > 0 && (
+          <span className="sidebar-status-count">{runningCount} 个任务运行中</span>
         )}
       </section>
     </aside>

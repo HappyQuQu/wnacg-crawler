@@ -18,7 +18,7 @@ rm -f "$ZIP_PATH"
 
 (
   cd "$ROOT_DIR/extension"
-  zip -qr "$ZIP_PATH" manifest.json popup.html options.html dist
+  zip -qr "$ZIP_PATH" manifest.json popup.html options.html ui.css icons dist
 )
 
 echo "Created $ZIP_PATH"

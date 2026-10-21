@@ -1,28 +1,14 @@
 <!doctype html>
-<html lang="zh-CN">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>WNACG Downloader 设置</title>
-  </head>
-  <body>
-    <main style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:640px;margin:40px auto;display:grid;gap:16px">
-      <h1>WNACG Downloader 扩展设置</h1>
-      <label>
-        后台地址
-        <input id="server-url" style="width:100%;height:36px" value="http://127.0.0.1:8080">
-      </label>
-      <label>
-        后台页面地址
-        <input id="admin-url" style="width:100%;height:36px" value="http://127.0.0.1:5173">
-      </label>
-      <label>
-        Extension Token
-        <input id="token" style="width:100%;height:36px" placeholder="可选">
-      </label>
-      <button id="save" style="height:38px">保存</button>
-      <p id="message"></p>
-    </main>
-    <script type="module" src="dist/options.js"></script>
-  </body>
-</html>
+<html lang="zh-CN" class="options-document"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>WNACG Downloader 扩展设置</title><link rel="stylesheet" href="ui.css"></head><body><main class="options-shell">
+<header class="app-header"><div class="brand"><span class="brand-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 16v4a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-4"/></svg></span><div class="brand-copy"><h1>WNACG Downloader</h1><p>浏览器扩展</p></div></div><span class="badge connection-badge badge-orange" id="status-badge" role="status">连接中</span></header>
+<div class="options-heading"><div><h2>扩展连接设置</h2><p>连接你的下载后台，从原站快速添加作品。</p></div><button type="button" class="btn-primary" id="open-admin">打开后台<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6m0-6L10 14M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5"/></svg></button></div>
+<div class="options-grid"><section class="card" aria-labelledby="settings-heading"><div class="connection-editor" id="connection-editor">
+  <div class="editor-header"><span class="eyebrow">扩展偏好</span><h2 class="card-title" id="settings-heading">连接设置</h2><p class="card-sub">填写本地后台地址与后台设置页中的 Token。</p></div>
+  <fieldset class="editor-fields" id="editor-fields" disabled>
+    <div class="field"><label class="field-label" for="input-server">后台服务地址</label><input class="field-input" id="input-server" type="url" spellcheck="false" autocomplete="off" aria-describedby="server-hint input-server-error"><p class="field-hint" id="server-hint">例如 http://127.0.0.1:8082，不含 /api。</p><p class="field-error" id="input-server-error" hidden></p></div>
+    <div class="field"><label class="field-label" for="input-admin">后台页面地址</label><input class="field-input" id="input-admin" type="url" spellcheck="false" autocomplete="off" aria-describedby="admin-hint input-admin-error"><p class="field-hint" id="admin-hint">一体化部署与服务地址相同，开发环境可填 5173 端口。</p><p class="field-error" id="input-admin-error" hidden></p></div>
+    <div class="field"><div class="field-heading"><label for="input-token">扩展 Token</label><span class="badge badge-blue" id="token-state">读取中</span></div><div class="field-row"><input class="field-input" id="input-token" type="password" aria-describedby="input-token-error" autocomplete="off" spellcheck="false" maxlength="256" placeholder="粘贴后台生成的 Token"><button class="icon-button" type="button" id="btn-visibility" aria-label="显示 Token" title="显示 Token" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg></button></div><p class="field-error" id="input-token-error" hidden>Token 长度不能超过 256 个字符。</p><div class="token-actions"><button type="button" class="text-button primary" id="btn-paste">粘贴 Token</button><button type="button" class="text-button" id="btn-clear">清除 Token</button></div></div>
+  </fieldset>
+  <div class="editor-actions"><div class="editor-actions-row"><span class="editor-status" id="editor-status" role="status">正在读取设置…</span><button type="button" class="text-button" id="btn-discard" disabled>撤销更改</button></div><div class="editor-actions-row"><button type="button" class="btn-secondary" id="btn-test" disabled>测试连接</button><button type="button" class="btn-primary" id="btn-save" disabled>保存设置</button></div><p class="msg" id="settings-msg" role="status"></p></div>
+</div></section><aside class="options-side"><section class="card" aria-label="连接测试结果"><span class="eyebrow">本地服务</span><h3>连接测试</h3><span class="badge badge-orange" id="test-state">正在检测</span><p id="test-message">正在读取已保存的连接配置…</p><p id="tested-address"></p></section><section class="card"><span class="eyebrow">首次使用</span><h3>连接步骤</h3><ol class="setup-steps"><li>启动后台，确认浏览器可以打开管理页面。</li><li>在后台设置中生成 Token，复制到左侧表单。</li><li>测试连接后保存，再回到作品页打开扩展。</li></ol></section></aside></div>
+</main><script type="module" src="dist/options.js"></script></body></html>
