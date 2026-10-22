@@ -3,6 +3,7 @@ from typing import Literal
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from fastapi.responses import FileResponse
 
+from backend.app.core.paths import download_filename
 from backend.app.core.schemas import ApiResponse, LibraryDeleteRequest, LibrarySelectionRequest
 from backend.app.services.library_service import library_service
 from backend.app.services.task_runner import task_runner
@@ -58,7 +59,9 @@ async def prepare_library_downloads(payload: LibrarySelectionRequest):
 async def download_library_item(manga_id: str):
     try:
         path = await library_service.prepare_download(manga_id)
-        return FileResponse(path, filename=path.name, media_type="application/zip")
+        return FileResponse(
+            path, filename=download_filename(path, manga_id), media_type="application/zip",
+        )
     except KeyError:
         raise HTTPException(status_code=404, detail="资料库项目不存在") from None
     except (ValueError, OSError) as exc:

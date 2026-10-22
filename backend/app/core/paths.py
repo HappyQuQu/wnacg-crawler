@@ -20,3 +20,7 @@ def original_dir(base: Path, manga_id: str, title: str) -> Path:
 def zip_path(base: Path, manga_id: str, title: str) -> Path:
     return base / "Zip" / f"[{manga_id}] {safe_filename(title, manga_id)}.zip"
 
+
+def download_filename(archive: Path, manga_id: str) -> str:
+    return archive.name.removeprefix(f"[{manga_id}] ")
+

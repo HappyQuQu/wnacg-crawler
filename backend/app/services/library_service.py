@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from backend.app.core.config import get_settings
-from backend.app.core.paths import manga_dir, safe_filename, zip_path
+from backend.app.core.paths import download_filename, manga_dir, safe_filename, zip_path
 from backend.app.core.time import local_isoformat
 from backend.app.crawler.downloader import image_extension
 from backend.app.crawler.images import find_valid_image_path
@@ -103,7 +103,7 @@ class LibraryService:
                 target = await self.prepare_download(manga_id)
                 ready.append({
                     "manga_id": manga_id,
-                    "filename": target.name,
+                    "filename": download_filename(target, manga_id),
                     "url": f"/api/library/{manga_id}/download",
                 })
             except KeyError:

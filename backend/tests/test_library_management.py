@@ -1,6 +1,7 @@
 import io
 import zipfile
 from pathlib import Path
+from urllib.parse import unquote
 from uuid import uuid4
 
 import pytest
@@ -34,9 +35,8 @@ async def management_db(tmp_path, monkeypatch):
     await engine.dispose()
 
 
-async def seed(factory, status="completed", count=2):
+async def seed(factory, status="completed", count=2, title="城市日记"):
     manga_id = str(uuid4().int)
-    title = "城市日记"
     directory = manga_dir(Path(get_settings().download_path), manga_id, title)
     directory.mkdir(parents=True)
     async with factory() as session:
@@ -145,11 +145,39 @@ async def test_ten_selected_items_download_as_ten_separate_files(management_db):
         assert response.status_code == 200
         assert response.headers["content-type"] == "application/zip"
         assert "attachment;" in response.headers["content-disposition"]
-        assert item["filename"].startswith(f"[{item['manga_id']}] ")
+        assert item["filename"] == "城市日记.zip"
+        filename = response.headers["content-disposition"].split("filename*=utf-8''")[1]
+        assert unquote(filename) == item["filename"]
         with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
             assert sorted(archive.namelist()) == ["0001_1.jpg", "0002_2.jpg"]
     async with management_db() as session:
         assert len(list((await session.execute(select(DownloadTask))).scalars())) == 10
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("title, expected", [
+    ("[作者] 城市日记", "[作者] 城市日记.zip"),
+    ("日本語の作品 [翻译]", "日本語の作品 [翻译].zip"),
+    ("作品/标题:第一卷", "作品_标题_第一卷.zip"),
+])
+async def test_export_name_omits_only_storage_id_and_preserves_existing_archive(
+    management_db, title, expected,
+):
+    manga_id, _, directory = await seed(management_db, title=title)
+    archive = await library_service.prepare_download(manga_id)
+    content = archive.read_bytes()
+    modified = archive.stat().st_mtime_ns
+    client = TestClient(app)
+    prepared = client.post("/api/library/downloads", json={"manga_ids": [manga_id]})
+    assert prepared.json()["data"]["ready"][0]["filename"] == expected
+    response = client.get(f"/api/library/{manga_id}/download")
+    assert response.status_code == 200
+    filename = response.headers["content-disposition"].split("filename*=utf-8''")[1]
+    assert unquote(filename) == expected
+    assert archive.name.startswith(f"[{manga_id}] ")
+    assert directory.name.startswith(f"[{manga_id}] ")
+    assert archive.read_bytes() == content
+    assert archive.stat().st_mtime_ns == modified
 
 
 @pytest.mark.asyncio
