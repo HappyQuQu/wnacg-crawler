@@ -146,12 +146,11 @@ export function LibraryPage({
   async function download(items: LibraryItem[]) {
     if (!items.length || busy) return;
     setDownloadBusy(true);
+    setDownloadResult(null);
     try {
       const result = await prepareLibraryDownloadsApi(items.map((item) => item.manga_id));
       setDownloadResult(result);
       await startLibraryDownloads(result.ready);
-      if (result.ready.length) showToast(`已发起 ${result.ready.length} 个独立文件下载`, "success");
-      if (result.failed.length) showToast(`${result.failed.length} 项无法下载，请查看下载清单中的原因`, "warning");
       await onRefresh();
     } catch (error) {
       showToast(error instanceof Error ? error.message : "准备下载失败，请重试", "error");
@@ -196,7 +195,7 @@ export function LibraryPage({
         const selected = key === "zipped" ? zipFilter === "zipped" : libraryFilter === key && zipFilter === "all";
         return <button key={key} className={`overview-metric ${tone} ${selected ? "collection-metric-selected" : ""}`} disabled={initialLoading} aria-label={`${label} ${initialLoading ? "加载中" : count}`} aria-pressed={selected} onClick={() => { chooseFilter(key === "zipped" ? "all" : key); setZipFilter(key === "zipped" ? "zipped" : "all"); }}><div className="overview-metric-top"><span>{label}</span><Icon size={17} /></div>{initialLoading ? <Skeleton height="34px" width="52px" borderRadius="5px" /> : <strong>{count.toLocaleString("zh-CN")}</strong>}<div className="overview-metric-bottom"><span>{detail}</span><ArrowRight size={14} /></div></button>;
       })}</section>
-      {downloadResult && <LibraryDownloads result={downloadResult} busy={busy} onRetryAll={() => void retryDownloads()} onClose={() => setDownloadResult(null)} />}
+      {downloadResult && <LibraryDownloads result={downloadResult} busy={busy} sending={downloadBusy} onRetryAll={() => void retryDownloads()} onClose={() => setDownloadResult(null)} />}
       <div className={`collection-workspace ${hasDetail && !compact ? "has-detail" : ""}`}>
         <LibraryContent items={filteredItems} selectedId={visibleDetailId} viewMode={viewMode} sortBy={sortBy} sortOrder={sortOrder} noImageMode={noImageMode} initialLoading={initialLoading} loading={busy} searching={!!normalizedSearch} hasFilters={libraryFilter !== "all" || zipFilter !== "all"} onResetFilters={() => { chooseFilter("all"); setZipFilter("all"); onClearSearch(); }} onAddTask={onAddTask}
           selection={{ checkedIds, checkedCount: checkedItems.length, onToggleItem: toggleItem, onToggleAll: () => setCheckedIds(checkedItems.length === filteredItems.length ? new Set() : new Set(filteredItems.map((item) => item.manga_id))), onClear: () => setCheckedIds(new Set()), onDownload: (item) => void download(item ? [item] : checkedItems), onDelete: (item) => requestDelete(item ? [item] : checkedItems), downloadBusy }}
