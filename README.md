@@ -141,7 +141,7 @@ data/
 
 ### 安装与连接
 
-扩展需要已启动的后台，并在本机构建后加载。构建环境建议使用 Node.js 22.12+ 和 npm，在项目根目录执行：
+扩展需要已启动的后台，并在本机构建后加载。构建环境使用 Node.js 24 LTS 的最新补丁版本（最低 24.22.1）和 npm，在项目根目录执行：
 
 ```bash
 npm ci
@@ -199,7 +199,16 @@ npm run package:extension
 
 ## 本地开发
 
-需要 **Python 3.12、Node.js 22.12+、npm**；完整验证和扩展打包还需要 Bash、`zip`。以下命令均在项目根目录执行。
+需要 **Python 3.12、Node.js 24 LTS 的最新补丁版本（最低 24.22.1）、npm**；完整验证和扩展打包还需要 Bash、`zip`。以下命令均在项目根目录执行。
+
+项目通过 `.nvmrc` 选择 Node.js 24。使用 nvm 时，先执行以下命令安装该系列的最新补丁并切换版本：
+
+```bash
+nvm install
+nvm use
+```
+
+Docker 前端构建同样使用 `node:24-slim`；运行 `docker compose build --pull` 可拉取该系列最新基础镜像。最终后台镜像运行 Python，无需安装 Node.js。
 
 ### 后端
 

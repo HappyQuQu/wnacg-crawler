@@ -2,6 +2,9 @@
   "name": "wnacg-downloader-workspace",
   "version": "2.0.0-dev",
   "private": true,
+  "engines": {
+    "node": ">=24.22.1 <25"
+  },
   "workspaces": [
     "frontend",
     "extension"

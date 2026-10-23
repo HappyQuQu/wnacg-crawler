@@ -18,6 +18,7 @@ WNACG Downloader 是一个本地下载中枢，目标形态：
 - Alembic
 
 **前端：**
+- Node.js 24 LTS 最新补丁版本（通过 `.nvmrc` 选择，Docker 构建使用 `node:24-slim`）
 - Vite + React + TypeScript
 - lucide-react 图标
 
