@@ -7,25 +7,4 @@ services:
       - ./data:/app/data
       - ./config:/app/config
     shm_size: "2gb"
-    env_file:
-      - path: .env
-        required: false
-    environment:
-      - PYTHONUNBUFFERED=1
-      - WNACG_FETCH_MODE=${WNACG_FETCH_MODE:-auto}
-      - WNACG_ENABLE_BROWSER=${WNACG_ENABLE_BROWSER:-true}
-      - WNACG_ENABLE_STEALTH=${WNACG_ENABLE_STEALTH:-false}
-      - WNACG_BROWSER_HEADLESS=${WNACG_BROWSER_HEADLESS:-true}
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/health', timeout=3).read()",
-        ]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
     restart: unless-stopped

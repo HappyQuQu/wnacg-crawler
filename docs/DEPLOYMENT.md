@@ -33,8 +33,7 @@ docker run -d --name wnacg --restart unless-stopped --shm-size=2g \
 
 ## Docker Compose
 
-需要 Docker Compose 2.24.0 或更新版本，支持可选的 `.env` 配置文件，参见
-[Compose 官方说明](https://docs.docker.com/reference/compose-file/services/#required)。
+需要 Docker Compose。默认配置只包含镜像、端口、数据挂载、共享内存和重启策略。
 
 在项目根目录拉取已发布的镜像并启动：
 
@@ -123,15 +122,16 @@ Python stage -> 安装 FastAPI 后端并复制 frontend/dist
 
 ## 环境配置
 
-不创建 `.env` 也能启动。需要自定义配置时，可复制 `.env.example` 到 `.env`，再编辑需要的项。
-Compose 会将 `.env` 中的变量传入容器；浏览器参数也支持用同名系统环境变量覆盖：
+默认通过后台「设置」调整下载参数，无需 `.env`。
+需要环境变量覆盖时，复制 `.env.example` 为 `.env`，并在 Compose 的 `wnacg` 服务下添加：
 
-```bash
-WNACG_ENABLE_BROWSER=false docker compose up -d
+```yaml
+    env_file:
+      - .env
 ```
 
 所有后端变量使用 `WNACG_` 前缀，包括 `WNACG_FETCH_MODE`、`WNACG_ENABLE_BROWSER`、
-`WNACG_ENABLE_STEALTH` 和 `WNACG_BROWSER_HEADLESS`。修改 Compose 环境变量后，
+`WNACG_ENABLE_STEALTH` 和 `WNACG_BROWSER_HEADLESS`。修改 `.env` 后，
 运行 `docker compose up -d` 重新创建容器，使新值生效。
 
 后端配置优先级为：系统环境变量 > `.env` > `config/config.local.json` > 内置默认值。

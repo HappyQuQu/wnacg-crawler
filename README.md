@@ -76,7 +76,7 @@ docker compose up -d
 - API 文档：<http://127.0.0.1:8080/docs>
 - 健康检查：<http://127.0.0.1:8080/api/health>
 
-默认即可运行。需要环境配置时，复制 `.env.example` 为 `.env`，按需修改后运行 `docker compose up -d`。
+默认即可运行，下载参数可在后台「设置」中调整。需要环境变量覆盖时，参见[环境配置](docs/DEPLOYMENT.md#环境配置)。
 
 ```bash
 # 更新镜像并重建容器
@@ -196,7 +196,7 @@ npm run package:extension
 | `WNACG_THEME` | 后台主题：`light`、`dark` 或 `system`，默认 `system`（跟随系统） |
 | `WNACG_FETCH_MODE` | `auto`、`http` 或 `browser`，默认 `auto` |
 | `WNACG_ENABLE_BROWSER` | 是否启用浏览器，默认 `true` |
-| `WNACG_ENABLE_STEALTH` | 是否启用 stealth，Compose 和 `.env.example` 默认 `false` |
+| `WNACG_ENABLE_STEALTH` | 是否启用 stealth，后端默认 `true`，`.env.example` 为 `false` |
 | `WNACG_PROXY__ADDRESS` / `WNACG_PROXY__PORT` | 代理地址和端口，需同时启用 `WNACG_PROXY__IS_PROXY=true` |
 | `WNACG_EXTENSION_TOKEN` | 固定扩展 Token；通常直接在后台生成即可 |
 
