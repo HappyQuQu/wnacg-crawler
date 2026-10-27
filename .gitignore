@@ -21,6 +21,9 @@ build/
 dist/
 wheels/
 
+# Local test sources
+/backend/tests/
+
 # Test, lint and type-check caches / reports
 .pytest_cache/
 .ruff_cache/
