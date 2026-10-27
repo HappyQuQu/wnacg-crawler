@@ -85,9 +85,6 @@ docker compose down
 
 ![概览：任务统计、运行状态和最近活动](docs/screenshots/dashboard-dark.png)
 
-<details>
-<summary>展开查看任务、资料库、日志和设置</summary>
-
 ### 批量添加
 
 ![批量预检：识别有效、重复和无效输入](docs/screenshots/add-task-dark.png)
@@ -109,8 +106,6 @@ docker compose down
 ![外观、存储路径与保存状态](docs/screenshots/settings-dark.png)
 
 ![图片压缩、代理和扩展连接设置](docs/screenshots/settings-details-dark.png)
-
-</details>
 
 ## 浏览器扩展
 
@@ -134,14 +129,11 @@ docker compose down
 
 扩展默认支持 `wnacg.com`、`wnacg.org` 和本机后台。使用其他站点域名或内网后台地址时，需要调整扩展目录中 `manifest.json` 的匹配规则及权限，再重新加载。详细步骤见[扩展验收指南](docs/EXTENSION_MANUAL_TEST.md)。
 
-<details>
-<summary>查看扩展界面</summary>
+### 扩展界面
 
 ![扩展弹窗：连接状态、当前作品和任务进度](docs/screenshots/extension-popup-dark.png)
 
 ![扩展设置：后台地址、Token 和连接测试](docs/screenshots/extension-settings-dark.png)
-
-</details>
 
 也可以从源码构建，需 Node.js 24 LTS 和 npm：
 
