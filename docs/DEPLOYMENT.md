@@ -23,7 +23,7 @@
 本项目发布的镜像为 `evanqu/wnacg-crawler`，支持 amd64/arm64。推荐使用下方的 Docker Compose 部署，也可直接运行：
 
 ```bash
-docker run -d --name wnacg --restart unless-stopped --shm-size=2g \
+docker run -d --name wnacg --restart unless-stopped \
   -p 127.0.0.1:8080:8080 \
   -v "$(pwd)/data:/app/data" -v "$(pwd)/config:/app/config" \
   evanqu/wnacg-crawler:latest
@@ -33,7 +33,7 @@ docker run -d --name wnacg --restart unless-stopped --shm-size=2g \
 
 ## Docker Compose
 
-需要 Docker Compose。默认配置只包含镜像、端口、数据挂载、共享内存和重启策略。
+需要 Docker Compose。默认配置只包含镜像、端口、数据挂载和重启策略。
 
 在项目根目录拉取已发布的镜像并启动：
 

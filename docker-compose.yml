@@ -6,5 +6,4 @@ services:
     volumes:
       - ./data:/app/data
       - ./config:/app/config
-    shm_size: "2gb"
     restart: unless-stopped

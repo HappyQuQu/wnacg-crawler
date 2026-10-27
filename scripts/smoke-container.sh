@@ -13,7 +13,7 @@ cleanup() {
 trap cleanup EXIT
 
 # Exercise the bundled browser using only an in-memory page.
-docker run --rm -i --network none --shm-size=2g "$IMAGE" python - <<'PY'
+docker run --rm -i --network none "$IMAGE" python - <<'PY'
 import asyncio
 from playwright.async_api import async_playwright
 
@@ -29,7 +29,7 @@ asyncio.run(main())
 PY
 
 docker volume create "$VOLUME" >/dev/null
-docker run -d --name "$CONTAINER" --network none --shm-size=2g \
+docker run -d --name "$CONTAINER" --network none \
   -v "$VOLUME:/app/config" "$IMAGE" >/dev/null
 
 for attempt in {1..30}; do
