@@ -1,0 +1,102 @@
+name: Publish Docker image
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Docker image tag to publish
+        type: string
+        default: edge
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dockerhub-publish
+  cancel-in-progress: false
+
+env:
+  IMAGE: ${{ vars.DOCKERHUB_NAMESPACE || secrets.DOCKERHUB_USERNAME }}/wnacg-crawler
+
+jobs:
+  verify:
+    uses: ./.github/workflows/ci.yml
+    with:
+      build_images: false
+
+  credentials:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check publishing configuration
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          DISPATCH_TAG: ${{ inputs.image_tag }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          test -n "${DOCKERHUB_USERNAME}" || { echo '::error::Missing DOCKERHUB_USERNAME secret'; exit 1; }
+          test -n "${DOCKERHUB_TOKEN}" || { echo '::error::Missing DOCKERHUB_TOKEN secret'; exit 1; }
+          if [[ "${EVENT_NAME}" == workflow_dispatch && ! "${DISPATCH_TAG}" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
+            echo '::error::Invalid Docker image tag'
+            exit 1
+          fi
+
+  images:
+    needs: [verify, credentials]
+    uses: ./.github/workflows/native-images.yml
+    with:
+      publish: true
+    secrets:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+
+  publish:
+    needs: images
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Prepare image tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: latest=false
+          tags: |
+            type=raw,value=latest,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=${{ inputs.image_tag }},enable=${{ github.event_name == 'workflow_dispatch' }}
+            type=sha,format=long
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: verified-digest-*
+          path: ${{ runner.temp }}/digests
+          merge-multiple: true
+      - name: Publish manifest from both verified digests
+        working-directory: ${{ runner.temp }}/digests
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          digests=(*)
+          test "${#digests[@]}" -eq 2
+          args=()
+          while IFS= read -r tag; do
+            args+=(--tag "${tag}")
+          done <<< "${TAGS}"
+          sources=()
+          for digest in "${digests[@]}"; do
+            sources+=("${IMAGE}@sha256:${digest}")
+          done
+          docker buildx imagetools create "${args[@]}" "${sources[@]}"
+          docker buildx imagetools inspect "${IMAGE}:sha-${GITHUB_SHA}"
+

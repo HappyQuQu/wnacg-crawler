@@ -1,5 +1,36 @@
 # 部署文档
 
+## GitHub Actions 与 Docker Hub
+
+仓库的自动化流程为：
+
+- Pull Request 和手动运行 `CI`：执行 `npm run validate`、上传扩展 ZIP，并在原生 amd64、arm64 runner 上构建和验证镜像。
+- 推送 `main`：检查通过后发布 Docker Hub `latest` 和 `sha-<完整提交 SHA>`。
+- 推送 `v*.*.*` 标签：发布版本号和主次版本标签，例如 `v2.0.0` 对应 `2.0.0`、`2.0`。
+- 手动运行 `Publish Docker image`：通过 `image_tag` 指定标签，默认 `edge`。
+
+在仓库 Settings → Secrets and variables → Actions 中配置：
+
+| 类型 | 名称 | 用途 |
+| --- | --- | --- |
+| Secret | `DOCKERHUB_USERNAME` | Docker Hub 登录用户名 |
+| Secret | `DOCKERHUB_TOKEN` | 有镜像仓库写入权限的访问令牌 |
+| Variable（可选） | `DOCKERHUB_NAMESPACE` | Docker Hub 命名空间，默认使用登录用户名 |
+
+镜像地址为 `<命名空间>/wnacg-crawler`。两个架构分别构建，使用镜像 digest 验证内置 Chromium、API、静态首页和 SQLite 文件，再将通过验证的 digest 合并为多架构标签。
+镜像验证使用隔离网络和全新数据卷，不访问真实站点或创建下载任务。
+
+下载预构建镜像并运行（将 `<命名空间>` 替换为实际值）：
+
+```bash
+docker run -d --name wnacg --restart unless-stopped --shm-size=2g \
+  -p 127.0.0.1:8080:8080 \
+  -v "$(pwd)/data:/app/data" -v "$(pwd)/config:/app/config" \
+  <命名空间>/wnacg-crawler:latest
+```
+
+扩展 ZIP 可在每次成功运行的 `CI` 或发布流程的 Artifacts 中下载。
+
 ## Docker Compose
 
 需要 Docker Compose 2.24.0 或更新版本，支持可选的 `.env` 配置文件，参见

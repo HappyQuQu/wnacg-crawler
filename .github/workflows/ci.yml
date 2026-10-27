@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      build_images:
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  checks:
+    name: Validate backend, frontend and extension
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install dependencies
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install '.[dev]'
+          npm ci
+      - name: Run repository validation
+        run: npm run validate
+      - name: Upload browser extension
+        uses: actions/upload-artifact@v4
+        with:
+          name: wnacg-downloader-extension
+          path: dist/wnacg-downloader-extension.zip
+          if-no-files-found: error
+
+  images:
+    if: toJSON(inputs.build_images) != 'false'
+    uses: ./.github/workflows/native-images.yml
+

@@ -94,6 +94,8 @@ Compose 将 `data/` 和 `config/` 挂载到容器中，停止或重建容器后�
 
 更多部署细节见 [部署文档](docs/DEPLOYMENT.md)。
 
+GitHub Actions 会在推送 `main` 后自动检查并发布 Docker Hub 多架构镜像（amd64/arm64），也支持版本标签和手动发布。镜像地址、变量配置和扩展 ZIP 下载方式见 [自动构建与发布](docs/DEPLOYMENT.md#github-actions-与-docker-hub)。
+
 ## 使用方法
 
 1. 打开后台，在「设置」中确认下载路径、代理、并发数和 ZIP 选项。
