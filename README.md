@@ -66,10 +66,11 @@
 ```bash
 git clone https://github.com/HappyQuQu/wnacg-crawler.git
 cd wnacg-crawler
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
-首次构建会安装依赖和 Chromium，可能需要几分钟。启动后访问：
+默认拉取 `evanqu/wnacg-crawler:latest`，支持 amd64/arm64，镜像已包含前端、后端及 Chromium。启动后访问：
 
 - 后台管理：<http://127.0.0.1:8080/>
 - API 文档：<http://127.0.0.1:8080/docs>
@@ -78,6 +79,10 @@ docker compose up -d --build
 默认即可运行。需要环境配置时，复制 `.env.example` 为 `.env`，按需修改后运行 `docker compose up -d`。
 
 ```bash
+# 更新镜像并重建容器
+docker compose pull
+docker compose up -d
+
 # 查看服务状态
 docker compose ps
 
@@ -210,7 +215,7 @@ nvm install
 nvm use
 ```
 
-Docker 前端构建同样使用 `node:24-slim`；运行 `docker compose build --pull` 可拉取该系列最新基础镜像。最终后台镜像运行 Python，无需安装 Node.js。
+需要从源码构建镜像时，运行 `docker build --pull -t wnacg-crawler:local .`。Docker 前端构建使用 `node:24-slim`，最终后台镜像运行 Python，无需在宿主机安装 Node.js。默认 Compose 使用 Docker Hub 发布的镜像。
 
 ### 后端
 

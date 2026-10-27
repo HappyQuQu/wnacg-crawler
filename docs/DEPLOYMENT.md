@@ -20,13 +20,13 @@
 镜像地址为 `<命名空间>/wnacg-crawler`。两个架构分别构建，使用镜像 digest 验证内置 Chromium、API、静态首页和 SQLite 文件，再将通过验证的 digest 合并为多架构标签。
 镜像验证使用隔离网络和全新数据卷，不访问真实站点或创建下载任务。
 
-下载预构建镜像并运行（将 `<命名空间>` 替换为实际值）：
+本项目发布的镜像为 `evanqu/wnacg-crawler`，支持 amd64/arm64。推荐使用下方的 Docker Compose 部署，也可直接运行：
 
 ```bash
 docker run -d --name wnacg --restart unless-stopped --shm-size=2g \
   -p 127.0.0.1:8080:8080 \
   -v "$(pwd)/data:/app/data" -v "$(pwd)/config:/app/config" \
-  <命名空间>/wnacg-crawler:latest
+  evanqu/wnacg-crawler:latest
 ```
 
 扩展 ZIP 可在每次成功运行的 `CI` 或发布流程的 Artifacts 中下载。
@@ -36,11 +36,24 @@ docker run -d --name wnacg --restart unless-stopped --shm-size=2g \
 需要 Docker Compose 2.24.0 或更新版本，支持可选的 `.env` 配置文件，参见
 [Compose 官方说明](https://docs.docker.com/reference/compose-file/services/#required)。
 
-构建并启动：
+在项目根目录拉取已发布的镜像并启动：
 
 ```bash
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
+
+默认使用 `evanqu/wnacg-crawler:latest`，无需在本地构建或安装 Python、Node.js。
+需要固定版本时，将 `docker-compose.yml` 的 `image` 改为对应的已发布版本号或 `sha-<完整提交 SHA>` 标签。
+
+更新到最新镜像：
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+更新会重建容器，挂载目录中的配置、数据库和下载文件会保留。
 
 访问后台管理：
 
@@ -114,7 +127,7 @@ Python stage -> 安装 FastAPI 后端并复制 frontend/dist
 Compose 会将 `.env` 中的变量传入容器；浏览器参数也支持用同名系统环境变量覆盖：
 
 ```bash
-WNACG_ENABLE_BROWSER=false docker compose up -d --build
+WNACG_ENABLE_BROWSER=false docker compose up -d
 ```
 
 所有后端变量使用 `WNACG_` 前缀，包括 `WNACG_FETCH_MODE`、`WNACG_ENABLE_BROWSER`、
