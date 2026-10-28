@@ -1,3 +1,4 @@
+import json
 import re
 from dataclasses import dataclass
 from html import unescape
@@ -12,6 +13,14 @@ class PicPageItem:
     page_url: str
     pic_num: str
     pic_index: int
+    pic_url: str = ""
+
+
+@dataclass
+class SeriesChapter:
+    manga_id: str
+    pic_count: int
+    index: int
 
 
 class MangaParser:
@@ -29,8 +38,79 @@ class MangaParser:
         if nums:
             page_count = max(nums)
 
+        chapter_count = 0
+        series = soup.select_one("#sr_pub[data-total][data-per]")
+        if series is not None:
+            chapter_count = int(str(series["data-total"]))
+            per_page = int(str(series["data-per"]))
+            if chapter_count <= 0 or per_page <= 0:
+                raise ValueError("合集章节数量无效")
+            page_count = (chapter_count + per_page - 1) // per_page
+
         cover_url = self._extract_cover(soup)
-        return {"id": manga_id, "title": title, "page_count": page_count, "cover_url": cover_url}
+        return {
+            "id": manga_id, "title": title, "page_count": page_count,
+            "cover_url": cover_url, "chapter_count": chapter_count,
+        }
+
+    def parse_series_chapters(self, html: str) -> list[SeriesChapter]:
+        soup = BeautifulSoup(html, "html.parser")
+        chapters = []
+        for link in soup.select(".sr_compact a[data-chid], .sr_grid a[data-chid]"):
+            manga_id = str(link["data-chid"])
+            count = re.search(r"\b(\d+)\s*P\b", str(link.get("title", "")))
+            ordinal = re.search(r"第\s*(\d+)\s*[話话]", link.get_text(" ", strip=True))
+            if (
+                not manga_id.isdecimal() or count is None or int(count.group(1)) <= 0
+                or ordinal is None
+            ):
+                raise ValueError("合集章节 ID 或图片数量无效")
+            chapters.append(SeriesChapter(manga_id, int(count.group(1)), int(ordinal.group(1))))
+        return chapters
+
+    def parse_reader_page_list(
+        self, script: str, chapter_id: str, manga_id: str, main_url: str
+    ) -> list[PicPageItem]:
+        reader = urljoin(main_url, f"photos-slide-aid-{chapter_id}-sid-{manga_id}.html")
+        # 同一阅读器提供整章图片，用 fragment 持久化图序，地址过期时仍可按序刷新。
+        return [
+            PicPageItem(
+                page_name=f"id_{manga_id}_pic_{index}",
+                page_url=f"{reader}#image-{index}",
+                pic_num=f"{chapter_id}_{index:04d}",
+                pic_index=index,
+                pic_url=url,
+            )
+            for index, url in enumerate(self.parse_reader_images(script, reader), start=1)
+        ]
+
+    def parse_reader_images(self, script: str, base_url: str) -> list[str]:
+        match = re.search(r'mReader\.initData\(\s*\{\s*"page_url"\s*:\s*\[', script)
+        if match is None:
+            raise ValueError("未解析到章节阅读器图片列表")
+        decoder = json.JSONDecoder()
+        cursor = match.end()
+        images: list[str] = []
+        # 站点输出的数组允许末尾逗号，只读取 JSON 字符串，不执行外围 JavaScript。
+        while cursor < len(script):
+            while cursor < len(script) and script[cursor].isspace():
+                cursor += 1
+            if cursor < len(script) and script[cursor] == "]":
+                return images
+            value, cursor = decoder.raw_decode(script, cursor)
+            if not isinstance(value, str):
+                raise ValueError("章节图片地址不是字符串")
+            url = self._resolve_image_url(unescape(value).strip(), base_url)
+            if url is None:
+                raise ValueError("章节图片地址无效")
+            images.append(url)
+            while cursor < len(script) and script[cursor].isspace():
+                cursor += 1
+            if cursor < len(script) and script[cursor] == ",":
+                cursor += 1
+            elif cursor >= len(script) or script[cursor] != "]":
+                raise ValueError("章节图片列表格式不完整")
+        raise ValueError("章节图片列表格式不完整")
 
     def _extract_cover(self, soup: BeautifulSoup) -> str:
         # Priority 1: Look for cover in .uwthumb container (WNACG specific)
@@ -105,6 +185,9 @@ class MangaParser:
             src = unescape(match.group(1)).strip()
         else:
             src = str(image["src"]).strip()
+        return self._resolve_image_url(src, base_url)
+
+    def _resolve_image_url(self, src: str, base_url: str) -> str | None:
         if not src:
             return None
         if src.startswith("//"):

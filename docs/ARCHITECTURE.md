@@ -210,6 +210,10 @@ Request interval: per host, default 1200ms; HTML also uses crawler_min/max_delay
 - HTTP 请求按主机名分别执行 `request_delay_ms` 限速；同一主机上的页面和图片仍共用间隔，HTML 另保留随机延迟及拦截冷却。
 - `max_active_tasks` 在启动时建立槽位，修改后需重启服务。
 
+合集入口通过 `#sr_pub` 的章节总数和每页数量识别，按合集分页抓全章节并校验话序、数量和唯一性。章节图片列表取自阅读器公开的 `photos-item-aid-{章节ID}.html`，只解码其中 `page_url` 数组，不执行 JavaScript；兼容站点数组末尾逗号。每章图片数必须与目录声明一致。
+
+合集继续使用一个原始任务与一个 ZIP。目录页和章节图片列表按顺序持久化到 `manga_page`，再按章节顺序建立统一的图片索引；文件名保留章节 ID 与章内图序，避免覆盖。阅读器来源使用 `#image-N` 记录章内图序，图片地址失效时重新获取相同章节列表并按序刷新。缓存复用、限速、图片处理、完整性校验及打包沿用现有流程；未抓全章节或图片列表时不得完成。
+
 ## 7. 状态广播
 
 WebSocket 消息来自 TaskService，不由下载函数直接拼 UI 状态。

@@ -24,10 +24,21 @@ from playwright.async_api import async_playwright
 from playwright_stealth import Stealth
 
 from backend.app.crawler.block_detector import is_blocked
+from backend.app.crawler.parser import manga_parser
 from backend.app.services.archive_service import create_zip, is_complete_zip
 
 assert not is_blocked(200, '<h2>Gallery</h2><script src="/slider-captcha.js"></script>')
 assert is_blocked(200, '<h1>403 Forbidden</h1>')
+series = (
+    '<h2>Series</h2><div id="sr_pub" data-total="99" data-per="12"></div>'
+    '<div class="sr_compact"><a data-chid="101" title="第1話 2P">第1話</a></div>'
+)
+assert manga_parser.parse_manga_info(series, "999")["page_count"] == 9
+assert manga_parser.parse_series_chapters(series)[0].pic_count == 2
+reader = 'mReader.initData({"page_url":["https://cdn.test/1.png",],"unused":undefined});'
+assert manga_parser.parse_reader_images(reader, "https://site.test/") == [
+    "https://cdn.test/1.png"
+]
 with TemporaryDirectory() as root:
     source = Path(root) / "images"
     source.mkdir()
