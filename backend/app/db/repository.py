@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from uuid import uuid4
 
 from sqlalchemy import delete, desc, func, or_, select, text
+from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.core.time import local_isoformat
@@ -176,6 +178,25 @@ class MangaRepository:
         await self.session.commit()
         await self.session.refresh(pic_page)
         return pic_page
+
+    async def upsert_pic_pages(self, pages: Sequence[MangaPicPage]) -> None:
+        fields = (
+            "manga_id", "page_index", "page_url", "page_name", "pic_index", "pic_num",
+            "pic_url", "status", "error_message",
+        )
+        for offset in range(0, len(pages), 500):
+            statement = insert(MangaPicPage).values([
+                {field: getattr(page, field) for field in fields}
+                for page in pages[offset:offset + 500]
+            ])
+            await self.session.execute(statement.on_conflict_do_update(
+                index_elements=["manga_id", "page_index"],
+                set_={
+                    **{field: getattr(statement.excluded, field) for field in fields[2:]},
+                    "updated_at": func.now(),
+                },
+            ))
+            await self.session.commit()
 
     async def list_pic_pages(self, manga_id: str) -> list[MangaPicPage]:
         result = await self.session.execute(
