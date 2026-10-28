@@ -24,9 +24,13 @@ DownloadFiles = list[DownloadFile]
 FileRow = dict[str, Any]
 FileRows = list[FileRow]
 SortItems = list[dict]
+DownloadFingerprint = tuple[tuple[Path, int, int], ...]
 
 
 class LibraryService:
+    def __init__(self) -> None:
+        self._prepared_downloads: dict[str, DownloadFingerprint] = {}
+
     async def delete(self, manga_id: str, delete_files: bool = False) -> None:
         _check_manga_id(manga_id)
         async with SessionLocal() as session:
@@ -48,6 +52,7 @@ class LibraryService:
             await tasks.delete_inactive_for_manga(manga_id)
             await repo.delete(manga_id)
             await session.commit()
+        self._prepared_downloads.pop(manga_id, None)
 
     async def delete_many(self, manga_ids: list[str], delete_files: bool = False) -> dict:
         deleted: list[str] = []
@@ -78,21 +83,33 @@ class LibraryService:
                 raise ValueError("作品仍有活跃任务，请完成或取消任务后下载")
             pages = await repo.list_pic_pages(manga_id)
             files = await FileRepository(session).list_for_manga(manga_id)
-            for row in self._file_rows_sync(info, pages, files):
+            rows = await asyncio.to_thread(self._file_rows_sync, info, pages, files)
+            for row in rows:
                 _check_owned_path(base, Path(row["file_path"]), manga_id, "Manga")
+            target = zip_path(base, manga_id, info.title or manga_id)
+            _check_owned_path(base, target, manga_id, "Zip")
+            paths = [Path(row["file_path"]) for row in rows]
+            fingerprint = await asyncio.to_thread(_download_fingerprint, [target, *paths])
+            if (
+                rows and all(row["status"] == "valid" for row in rows)
+                and fingerprint is not None
+                and self._prepared_downloads.get(manga_id) == fingerprint
+            ):
+                return target
             rows = await self._file_rows(info, pages, files, validate=True)
             if not rows or any(row["status"] != "valid" for row in rows):
                 raise ValueError("图片缺失或校验失败，请先在后台补全后再下载")
             paths = [Path(row["file_path"]) for row in rows]
             for path in paths:
                 _check_owned_path(base, path, manga_id, "Manga")
-            target = zip_path(base, manga_id, info.title or manga_id)
-            _check_owned_path(base, target, manga_id, "Zip")
             source = manga_dir(base, manga_id, info.title or manga_id)
 
         if not await asyncio.to_thread(is_complete_zip, target, paths):
             target.parent.mkdir(parents=True, exist_ok=True)
             await asyncio.to_thread(create_zip, source, target, paths)
+        fingerprint = await asyncio.to_thread(_download_fingerprint, [target, *paths])
+        if fingerprint is not None:
+            self._prepared_downloads[manga_id] = fingerprint
         return target
 
     async def prepare_downloads(self, manga_ids: list[str]) -> dict:
@@ -423,6 +440,17 @@ class LibraryService:
         if manga_status == "completed" and (not total_files or not zip_ready):
             return "partial"
         return manga_status
+
+
+def _download_fingerprint(paths: list[Path]) -> DownloadFingerprint | None:
+    try:
+        stamps = []
+        for path in paths:
+            stat = path.stat()
+            stamps.append((path, stat.st_size, stat.st_mtime_ns))
+        return tuple(stamps)
+    except OSError:
+        return None
 
 
 def _expected_file_path(info: MangaInfo, page: MangaPicPage | None, pic_index: int) -> Path:

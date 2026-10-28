@@ -4036,7 +4036,7 @@ tbody tr:hover {
 .has-failures .download-center-icon { background: var(--warning-soft); color: var(--warning-text); }
 .download-center-copy { flex: 1; min-width: 0; display: grid; gap: 4px; }
 .download-center-copy strong { font-size: 12px; line-height: 1.6; font-weight: 600; }
-.download-center-copy > span { color: var(--muted); font-size: 10px; line-height: 1.6; }
+.download-center-copy > span { color: var(--muted); font-size: 10px; line-height: 1.6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .has-failures .download-center-copy > span { color: var(--warning-text); }
 .download-center-toggle { display: flex; align-items: center; gap: 4px; flex-shrink: 0; min-height: 30px; padding: 0 2px; border: 0; background: transparent; color: var(--primary-text); font-size: 11px; cursor: pointer; }
 .download-center.expanded .download-center-toggle svg { transform: rotate(180deg); }
