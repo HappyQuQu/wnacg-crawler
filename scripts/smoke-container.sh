@@ -26,9 +26,12 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from backend.app.crawler.block_detector import is_blocked
 from backend.app.crawler.parser import manga_parser
+from backend.app.core.config import get_settings
+from backend.app.core.paths import manga_dir
 from backend.app.db.models import Base, MangaPicPage
-from backend.app.db.repository import MangaRepository
+from backend.app.db.repository import FileRepository, MangaRepository
 from backend.app.services.archive_service import create_zip, is_complete_zip
+from backend.app.services import library_service as library_module
 
 assert not is_blocked(200, '<h2>Gallery</h2><script src="/slider-captcha.js"></script>')
 assert is_blocked(200, '<h1>403 Forbidden</h1>')
@@ -74,6 +77,30 @@ async def main():
         stored = await MangaRepository(session).list_pic_pages("999")
         assert [page.pic_index for page in stored] == list(range(1, 504))
         assert stored[-1].pic_url == "https://cdn.test/refreshed.png"
+    with TemporaryDirectory() as root:
+        get_settings().download_path = Path(root)
+        library_module.SessionLocal = sessions
+        service = library_module.LibraryService()
+        directory = manga_dir(Path(root), "888", "Smoke")
+        directory.mkdir(parents=True)
+        image = directory / "0001_1.png"
+        Image.new("RGB", (8, 8), "blue").save(image)
+        async with sessions() as session:
+            repo = MangaRepository(session)
+            await repo.upsert_info("888", "Smoke", "", 1, "completed")
+            await repo.update_info_status("888", "completed", pic_count=1)
+            await repo.upsert_pic_page("888", 1, "reader", "image", "1", "image.png")
+            await FileRepository(session).upsert_file(
+                "888", 1, str(image), image.name, image.stat().st_size, "valid",
+            )
+        archive = await service.prepare_download("888")
+        stamp = archive.stat().st_mtime_ns
+        def no_rescan(*args, **kwargs):
+            raise AssertionError("Unchanged prepared downloads must reuse validation")
+        library_module.find_valid_image_path = no_rescan
+        library_module.is_complete_zip = no_rescan
+        assert await service.prepare_download("888") == archive
+        assert archive.stat().st_mtime_ns == stamp
     await engine.dispose()
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(args=["--no-sandbox"])

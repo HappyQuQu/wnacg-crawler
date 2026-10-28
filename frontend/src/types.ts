@@ -101,6 +101,8 @@ export type LibraryDownloadResult = {
   failed: LibraryBatchFailure[];
 };
 
+export type LibraryDownloadProgress = { current: number; total: number; title: string };
+
 export type LibraryDeleteResult = {
   deleted: string[];
   failed: LibraryBatchFailure[];

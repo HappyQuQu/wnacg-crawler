@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Activity, AlertTriangle, Archive, ArrowRight, BookOpen, CheckCircle2, Plus, RefreshCw } from "lucide-react";
-import type { LibraryItem, LibraryFilter, LibrarySortKey, LibraryViewMode, LibraryDownloadResult, WsStatus } from "../types";
+import type { LibraryItem, LibraryFilter, LibrarySortKey, LibraryViewMode, LibraryDownloadResult, LibraryDownloadProgress, WsStatus } from "../types";
 import { LibraryContent } from "../components/LibraryContent";
 import { LibraryDetailPanel } from "../components/LibraryDetailPanel";
 import { ConfirmDialog } from "../components/ConfirmDialog";
@@ -94,6 +94,7 @@ export function LibraryPage({
   const [deleteFiles, setDeleteFiles] = useState(false);
   const [downloadBusy, setDownloadBusy] = useState(false);
   const [downloadResult, setDownloadResult] = useState<LibraryDownloadResult | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<LibraryDownloadProgress | null>(null);
   const { showToast } = useToast();
   const busy = loading || downloadBusy;
 
@@ -146,15 +147,26 @@ export function LibraryPage({
   async function download(items: LibraryItem[]) {
     if (!items.length || busy) return;
     setDownloadBusy(true);
-    setDownloadResult(null);
+    const result: LibraryDownloadResult = { ready: [], failed: [] };
+    setDownloadResult(result);
     try {
-      const result = await prepareLibraryDownloadsApi(items.map((item) => item.manga_id));
-      setDownloadResult(result);
-      await startLibraryDownloads(result.ready);
+      for (const [index, item] of items.entries()) {
+        setDownloadProgress({ current: index + 1, total: items.length, title: item.title || item.manga_id });
+        try {
+          const prepared = await prepareLibraryDownloadsApi([item.manga_id]);
+          await startLibraryDownloads(prepared.ready);
+          result.ready.push(...prepared.ready);
+          result.failed.push(...prepared.failed);
+        } catch (error) {
+          result.failed.push({ manga_id: item.manga_id, error: error instanceof Error ? error.message : "准备下载失败，请重试" });
+        }
+        setDownloadResult({ ready: [...result.ready], failed: [...result.failed] });
+      }
       await onRefresh();
     } catch (error) {
       showToast(error instanceof Error ? error.message : "准备下载失败，请重试", "error");
     } finally {
+      setDownloadProgress(null);
       setDownloadBusy(false);
     }
   }
@@ -195,7 +207,7 @@ export function LibraryPage({
         const selected = key === "zipped" ? zipFilter === "zipped" : libraryFilter === key && zipFilter === "all";
         return <button key={key} className={`overview-metric ${tone} ${selected ? "collection-metric-selected" : ""}`} disabled={initialLoading} aria-label={`${label} ${initialLoading ? "加载中" : count}`} aria-pressed={selected} onClick={() => { chooseFilter(key === "zipped" ? "all" : key); setZipFilter(key === "zipped" ? "zipped" : "all"); }}><div className="overview-metric-top"><span>{label}</span><Icon size={17} /></div>{initialLoading ? <Skeleton height="34px" width="52px" borderRadius="5px" /> : <strong>{count.toLocaleString("zh-CN")}</strong>}<div className="overview-metric-bottom"><span>{detail}</span><ArrowRight size={14} /></div></button>;
       })}</section>
-      {downloadResult && <LibraryDownloads result={downloadResult} busy={busy} sending={downloadBusy} onRetryAll={() => void retryDownloads()} onClose={() => setDownloadResult(null)} />}
+      {downloadResult && <LibraryDownloads result={downloadResult} progress={downloadProgress} busy={busy} sending={downloadBusy} onRetryAll={() => void retryDownloads()} onClose={() => setDownloadResult(null)} />}
       <div className={`collection-workspace ${hasDetail && !compact ? "has-detail" : ""}`}>
         <LibraryContent items={filteredItems} selectedId={visibleDetailId} viewMode={viewMode} sortBy={sortBy} sortOrder={sortOrder} noImageMode={noImageMode} initialLoading={initialLoading} loading={busy} searching={!!normalizedSearch} hasFilters={libraryFilter !== "all" || zipFilter !== "all"} onResetFilters={() => { chooseFilter("all"); setZipFilter("all"); onClearSearch(); }} onAddTask={onAddTask}
           selection={{ checkedIds, checkedCount: checkedItems.length, onToggleItem: toggleItem, onToggleAll: () => setCheckedIds(checkedItems.length === filteredItems.length ? new Set() : new Set(filteredItems.map((item) => item.manga_id))), onClear: () => setCheckedIds(new Set()), onDownload: (item) => void download(item ? [item] : checkedItems), onDelete: (item) => requestDelete(item ? [item] : checkedItems), downloadBusy }}
