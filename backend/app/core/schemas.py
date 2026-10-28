@@ -79,6 +79,7 @@ class ConfigUpdateRequest(BaseModel):
     keep_original_images: bool | None = None
     allow_image_resize: bool | None = None
     max_thread: int | None = Field(default=None, ge=1, le=20)
+    max_active_tasks: int | None = Field(default=None, ge=1, le=20)
     re_count: int | None = Field(default=None, ge=1, le=12)
     request_delay_ms: int | None = Field(default=None, ge=0, le=10000)
     timeout_seconds: int | None = Field(default=None, ge=5, le=120)

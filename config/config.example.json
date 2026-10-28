@@ -7,6 +7,7 @@
   "keep_original_images": true,
   "allow_image_resize": false,
   "max_thread": 6,
+  "max_active_tasks": 2,
   "re_count": 5,
   "request_delay_ms": 1200,
   "timeout_seconds": 30,

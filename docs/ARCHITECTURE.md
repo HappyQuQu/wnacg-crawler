@@ -196,17 +196,19 @@ TaskService
 当前实现：
 
 ```text
-Batch task concurrency: run_many 并发启动
-Image download concurrency: configurable by max_thread, default 6
-Request interval: shared by downloader, default 1200ms
+Batch task concurrency: max_active_tasks, default 2 (applied at service startup)
+Image download concurrency: max_thread shared across tasks, default 6
+Request interval: per host, default 1200ms; HTML also uses crawler_min/max_delay
 ```
 
 说明：
 
-- 批量加入任务时，后台会并发执行多个漫画任务。
-- 单个漫画的 `downloading` 阶段会按 `max_thread` 创建并发 worker。
-- 所有 HTTP 请求仍共享 downloader 的请求间隔，避免瞬间打爆站点。
-- 目录页抓取和图片详情页解析仍按阶段顺序推进，真实站点验收后再决定是否继续并发化。
+- 批量、单任务、恢复及问题图片重试共用漫画任务槽位，默认同时处理两本；其余任务保持持久化的 queued 状态。
+- 目录完整后先建立图片页清单，worker 按需解析地址并立即下载，无需等待整本详情页全部解析完。
+- 重试复用已保存的元信息、目录页、相同图片页的已解析地址和有效文件；地址失效时沿用详情页刷新机制。
+- `max_thread` 同时约束单本 worker 和所有任务的图片传输总并发，热重载后新传输读取当前上限。
+- HTTP 请求按主机名分别执行 `request_delay_ms` 限速；同一主机上的页面和图片仍共用间隔，HTML 另保留随机延迟及拦截冷却。
+- `max_active_tasks` 在启动时建立槽位，修改后需重启服务。
 
 ## 7. 状态广播
 

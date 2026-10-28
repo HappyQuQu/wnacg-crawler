@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from bs4 import BeautifulSoup
+
 CLOUDFLARE_MARKERS = [
     "just a moment",
     "checking your browser",
@@ -60,7 +62,8 @@ def is_blocked(status_code: int | None = None, html: str | None = None) -> bool:
         return True
     if not html:
         return False
-    lowered = html.lower()
+    # 正常目录页也会引用 slider-captcha.js，脚本和属性不代表拦截页面。
+    lowered = BeautifulSoup(html, "lxml").get_text(" ", strip=True).lower()
     blocked_markers = ["403 forbidden", "access denied", "captcha", "验证", "forbidden"]
     if any(marker in lowered for marker in blocked_markers):
         return True

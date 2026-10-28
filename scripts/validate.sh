@@ -13,10 +13,14 @@ rm -rf "$TMP_TEST_ROOT"
 
 .venv/bin/ruff check backend
 .venv/bin/mypy backend
-WNACG_CONFIG_PATH="$TMP_TEST_ROOT/config.local.json" \
-  WNACG_DB_PATH="$TMP_TEST_ROOT/data.sqlite" \
-  WNACG_DOWNLOAD_PATH="$TMP_TEST_ROOT/data" \
-  .venv/bin/pytest -q
+if [[ -d backend/tests ]]; then
+  WNACG_CONFIG_PATH="$TMP_TEST_ROOT/config.local.json" \
+    WNACG_DB_PATH="$TMP_TEST_ROOT/data.sqlite" \
+    WNACG_DOWNLOAD_PATH="$TMP_TEST_ROOT/data" \
+    .venv/bin/python -m pytest -q
+else
+  echo "Local backend tests are absent; container smoke checks run in image verification."
+fi
 .venv/bin/python -m compileall backend
 WNACG_CONFIG_PATH="$TMP_CONFIG" WNACG_DB_PATH="$TMP_ALEMBIC_DB" .venv/bin/alembic upgrade head
 npm run lint -w frontend

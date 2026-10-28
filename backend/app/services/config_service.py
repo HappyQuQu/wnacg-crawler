@@ -32,6 +32,11 @@ class ConfigService:
             key for key in patch if effective_data[key] != requested[key]
         ]
         message = "配置已保存并热重载"
+        if (
+            "max_active_tasks" in patch
+            and effective.max_active_tasks != current["max_active_tasks"]
+        ):
+            message += "；漫画任务并发上限将在重启服务后生效"
         if overridden:
             message = "配置已保存；部分字段仍由环境变量或 .env 控制：" + ", ".join(overridden)
         return {

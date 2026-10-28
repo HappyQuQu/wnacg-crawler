@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 from time import monotonic
 from typing import Any
+from urllib.parse import urlsplit
 
 from curl_cffi.requests import AsyncSession
 from curl_cffi.requests.exceptions import HTTPError as CurlHTTPError
@@ -31,8 +32,8 @@ class BlockedByCloudflareError(Exception):
 class Downloader:
     def __init__(self) -> None:
         self._client: AsyncSession | None = None
-        self._delay_lock = asyncio.Lock()
-        self._last_request_at = 0.0
+        self._delay_locks: dict[str, asyncio.Lock] = {}
+        self._last_request_at: dict[str, float] = {}
 
     async def client(self) -> AsyncSession:
         if self._client is None:
@@ -67,16 +68,18 @@ class Downloader:
             logger.debug("Failed to load browser cookies: {}", exc)
             return None
 
-    async def _wait_for_delay(self) -> None:
+    async def _wait_for_delay(self, url: str) -> None:
         delay = get_settings().request_delay_ms / 1000
         if delay <= 0:
             return
-        async with self._delay_lock:
-            elapsed = monotonic() - self._last_request_at
+        domain = urlsplit(url).netloc
+        lock = self._delay_locks.setdefault(domain, asyncio.Lock())
+        async with lock:
+            elapsed = monotonic() - self._last_request_at.get(domain, 0.0)
             remaining = delay - elapsed
             if remaining > 0:
                 await asyncio.sleep(remaining)
-            self._last_request_at = monotonic()
+            self._last_request_at[domain] = monotonic()
 
     async def _get(self, url: str, **kwargs: Any) -> str:
         settings = get_settings()
@@ -90,7 +93,7 @@ class Downloader:
             reraise=True,
         )
         async def _do_get() -> str:
-            await self._wait_for_delay()
+            await self._wait_for_delay(url)
             client = await self.client()
             merged_headers = {**DEFAULT_HEADERS, **extra_headers}
             response = await client.get(url, headers=merged_headers, **kwargs)
@@ -144,7 +147,7 @@ class Downloader:
             reraise=True,
         )
         async def _do_get_bytes() -> bytes:
-            await self._wait_for_delay()
+            await self._wait_for_delay(url)
             client = await self.client()
             response = await client.get(url, headers=headers)
             if response.status_code == 403:

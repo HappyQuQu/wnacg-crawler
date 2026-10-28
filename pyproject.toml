@@ -20,7 +20,7 @@ dependencies = [
   "loguru>=0.7",
   "alembic>=1.13",
   "playwright>=1.44,<1.50",
-  "playwright-stealth>=1.0"
+  "playwright-stealth>=2.0,<3"
 ]
 
 [project.optional-dependencies]

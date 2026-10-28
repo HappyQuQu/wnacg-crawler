@@ -501,6 +501,7 @@ Request：
   "keep_original_images": true,
   "allow_image_resize": false,
   "max_thread": 6,
+  "max_active_tasks": 2,
   "re_count": 5,
   "request_delay_ms": 1200,
   "timeout_seconds": 30,
@@ -517,7 +518,7 @@ Request：
 
 `theme` 控制后台界面外观，可选 `light`、`dark`、`system`，默认 `system`（跟随系统），由 GET 返回并支持 POST 部分更新、持久化和热重载。
 
-`max_thread` 控制单个漫画在 `downloading` 阶段的图片并发 worker 数，取值范围 1 到 20。批量任务会并发启动多个漫画任务，但所有 HTTP 请求仍共享全局请求间隔配置。
+`max_thread` 控制单个漫画的图片 worker 数及跨任务的图片传输总并发，取值范围 1 到 20，默认 6。`max_active_tasks` 控制同时处理的漫画数，默认 2，取值范围 1 到 20，修改后需重启服务；等待中的任务保持 `queued`。HTTP 请求按主机名分别限速，相同主机仍共享 `request_delay_ms`；页面请求额外遵守随机抓取间隔。图片地址按需解析后立即下载，重试优先复用已解析地址与有效文件。
 
 图片压缩配置由 GET 返回，可通过 POST 部分更新并持久化、热重载：
 

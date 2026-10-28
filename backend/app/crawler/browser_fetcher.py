@@ -8,6 +8,7 @@ from pathlib import Path
 
 from loguru import logger
 from playwright.async_api import Browser, BrowserContext, Playwright, async_playwright
+from playwright_stealth import Stealth  # type: ignore[import-untyped]
 
 from backend.app.core.config import get_settings
 from backend.app.core.errors import ImageHTTPError
@@ -107,16 +108,8 @@ class BrowserManager:
             page = await context.new_page()
 
             if settings.enable_stealth:
-                try:
-                    from playwright_stealth import stealth_async  # type: ignore[import-untyped]
-                    await stealth_async(page)
-                    logger.debug("Stealth applied for {}", url)
-                except ImportError:
-                    logger.warning(
-                        "playwright-stealth not installed, skipping stealth"
-                    )
-                except Exception as exc:
-                    logger.debug("Stealth failed: {}", exc)
+                await Stealth().apply_stealth_async(page)
+                logger.debug("Stealth applied for {}", url)
 
             if referer:
                 try:
@@ -124,7 +117,8 @@ class BrowserManager:
                 except Exception:
                     logger.debug("referer navigation failed: {}", referer)
 
-            await page.goto(url, wait_until="networkidle", timeout=60000)
+            # 目录和图片地址来自静态 HTML，不等待广告等第三方请求结束。
+            await page.goto(url, wait_until="domcontentloaded", timeout=60000)
             html = await page.content()
 
             if is_cloudflare_challenge(html):
@@ -172,12 +166,7 @@ class BrowserManager:
             page = await context.new_page()
 
             if settings.enable_stealth:
-                try:
-                    from playwright_stealth import stealth_async
-
-                    await stealth_async(page)
-                except Exception:
-                    pass
+                await Stealth().apply_stealth_async(page)
 
             if referer:
                 try:

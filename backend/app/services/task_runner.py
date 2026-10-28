@@ -1,5 +1,6 @@
 import asyncio
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Sequence
+from contextlib import asynccontextmanager
 from pathlib import Path
 from time import monotonic
 
@@ -39,9 +40,26 @@ class TaskControlSignal(Exception):
 class TaskRunner:
     def __init__(self) -> None:
         self._running: set[str] = set()
+        self._task_slots = asyncio.Semaphore(get_settings().max_active_tasks)
+        self._image_condition = asyncio.Condition()
+        self._active_images = 0
 
     def is_running(self, task_id: str) -> bool:
         return task_id in self._running
+
+    @asynccontextmanager
+    async def _image_slot(self) -> AsyncIterator[None]:
+        async with self._image_condition:
+            await self._image_condition.wait_for(
+                lambda: self._active_images < get_settings().max_thread
+            )
+            self._active_images += 1
+        try:
+            yield
+        finally:
+            async with self._image_condition:
+                self._active_images -= 1
+                self._image_condition.notify_all()
 
     async def run_many(self, task_ids: Sequence[str]) -> None:
         await asyncio.gather(*(self.run(task_id) for task_id in task_ids))
@@ -71,20 +89,8 @@ class TaskRunner:
             return
         self._running.add(task_id)
         try:
-            await self._ensure_runnable(task_id)
-            manga_id = await self._manga_id(task_id)
-            if not manga_id:
-                return
-            await self._log("info", "task_started", "任务开始执行", task_id, manga_id)
-            info = await self._fetch_info(task_id, manga_id)
-            await self._ensure_runnable(task_id)
-            await self._fetch_pages(task_id, manga_id, info["page_count"])
-            await self._ensure_runnable(task_id)
-            pic_count = await self._resolve_images(task_id, manga_id)
-            await self._ensure_runnable(task_id)
-            valid_count = await self._download_images(task_id, manga_id)
-            await self._ensure_runnable(task_id)
-            await self._verify_and_finish(task_id, manga_id, pic_count, valid_count)
+            async with self._task_slots:
+                await self._run_task(task_id)
         except TaskControlSignal:
             await self.broadcast_snapshot(task_id)
         except Exception as exc:
@@ -109,20 +115,8 @@ class TaskRunner:
             return
         self._running.add(task_id)
         try:
-            await self._ensure_runnable(task_id)
-            manga_id = await self._manga_id(task_id)
-            if not manga_id:
-                return
-            await self._log(
-                "info",
-                "retry_failed_images_started",
-                "开始重试问题图片",
-                task_id,
-                manga_id,
-            )
-            result = await self._download_problem_images(task_id, manga_id)
-            await self._ensure_runnable(task_id)
-            await self._finish_problem_image_retry(task_id, manga_id, result)
+            async with self._task_slots:
+                await self._retry_images(task_id)
         except TaskControlSignal:
             await self.broadcast_snapshot(task_id)
         except Exception as exc:
@@ -142,6 +136,38 @@ class TaskRunner:
         finally:
             self._running.discard(task_id)
 
+    async def _run_task(self, task_id: str) -> None:
+        await self._ensure_runnable(task_id)
+        manga_id = await self._manga_id(task_id)
+        if not manga_id:
+            return
+        await self._log("info", "task_started", "任务开始执行", task_id, manga_id)
+        info = await self._fetch_info(task_id, manga_id)
+        await self._ensure_runnable(task_id)
+        await self._fetch_pages(task_id, manga_id, info["page_count"])
+        await self._ensure_runnable(task_id)
+        pic_count = await self._prepare_images(task_id, manga_id)
+        await self._ensure_runnable(task_id)
+        valid_count = await self._download_images(task_id, manga_id)
+        await self._ensure_runnable(task_id)
+        await self._verify_and_finish(task_id, manga_id, pic_count, valid_count)
+
+    async def _retry_images(self, task_id: str) -> None:
+        await self._ensure_runnable(task_id)
+        manga_id = await self._manga_id(task_id)
+        if not manga_id:
+            return
+        await self._log(
+            "info",
+            "retry_failed_images_started",
+            "开始重试问题图片",
+            task_id,
+            manga_id,
+        )
+        result = await self._download_problem_images(task_id, manga_id)
+        await self._ensure_runnable(task_id)
+        await self._finish_problem_image_retry(task_id, manga_id, result)
+
     async def _manga_id(self, task_id: str) -> str | None:
         async with SessionLocal() as session:
             task = await TaskRepository(session).get(task_id)
@@ -151,6 +177,18 @@ class TaskRunner:
         settings = get_settings()
         await self._set_task(task_id, "running", "fetching_info")
         await self._ensure_runnable(task_id)
+        async with SessionLocal() as session:
+            repo = MangaRepository(session)
+            cached = await repo.get_info(manga_id)
+            pages = await repo.list_pages(manga_id)
+            if cached and cached.title and cached.page_count and any(
+                page.page_index == 1 and page.status == "fetched" for page in pages
+            ):
+                return {
+                    "title": cached.title,
+                    "cover_url": cached.cover_url,
+                    "page_count": cached.page_count,
+                }
         url = settings.manga_page_url.format(page=1, aid=manga_id)
         html = await smart_fetch(url, referer=settings.manga_main_url)
         await self._ensure_runnable(task_id)
@@ -201,7 +239,7 @@ class TaskRunner:
                 await MangaRepository(session).upsert_page(manga_id, page_index, url, html)
             await self._set_task(task_id, "running", "fetching_pages", page_index, page_count)
 
-    async def _resolve_images(self, task_id: str, manga_id: str) -> int:
+    async def _prepare_images(self, task_id: str, manga_id: str) -> int:
         settings = get_settings()
         async with SessionLocal() as session:
             pages = await MangaRepository(session).list_pages(manga_id)
@@ -222,60 +260,32 @@ class TaskRunner:
         if not items:
             raise RuntimeError("未解析到图片详情页")
 
-        await self._set_task(task_id, "running", "resolving_images", 0, len(items))
-        for item in items:
-            await self._ensure_runnable(task_id)
-            await self._log(
-                "info", "image_resolve_started",
-                f"正在解析第 {item.pic_index}/{len(items)} 张图片",
-                task_id, manga_id, "resolving_images",
-                {"page_index": item.pic_index, "page_url": item.page_url},
-            )
-            html = await smart_fetch(item.page_url, referer=settings.manga_main_url)
-            await self._ensure_runnable(task_id)
-            pic_url = manga_parser.parse_pic_url(html, item.page_url)
-            status = "resolved" if pic_url else "failed"
-            error = "" if pic_url else "未解析到图片地址"
-            if error:
-                await self._log(
-                    "warning",
-                    "image_url_resolve_failed",
-                    error,
-                    task_id,
-                    manga_id,
-                    "resolving_images",
-                    {"page_index": item.pic_index, "page_url": item.page_url},
-                )
-            async with SessionLocal() as session:
-                await MangaRepository(session).upsert_pic_page(
+        async with SessionLocal() as session:
+            repo = MangaRepository(session)
+            cached = {page.pic_index: page for page in await repo.list_pic_pages(manga_id)}
+            for item in items:
+                cached_page = cached.get(item.pic_index)
+                if (
+                    cached_page is not None
+                    and cached_page.page_url == item.page_url
+                    and cached_page.pic_url
+                ):
+                    continue
+                await repo.upsert_pic_page(
                     manga_id=manga_id,
                     page_index=item.pic_index,
                     page_url=item.page_url,
                     page_name=item.page_name,
                     pic_num=item.pic_num,
-                    pic_url=pic_url or "",
-                    status=status,
-                    error_message=error,
-                )
-            await self._set_task(
-                task_id, "running", "resolving_images", item.pic_index, len(items)
-            )
-            if pic_url:
-                await self._log(
-                    "info", "image_url_resolved",
-                    f"第 {item.pic_index}/{len(items)} 张图片地址解析成功",
-                    task_id, manga_id, "resolving_images",
-                    {"page_index": item.pic_index, "page_url": item.page_url},
+                    pic_url="",
+                    status="pending",
                 )
 
         await self._set_manga_status(manga_id, "ready", pic_count=len(items))
         await self._log(
-            "info",
-            "image_urls_resolved",
-            f"解析到 {len(items)} 个图片详情页",
-            task_id,
-            manga_id,
-            "resolving_images",
+            "info", "image_pages_prepared",
+            f"准备好 {len(items)} 个图片详情页，边解析边下载",
+            task_id, manga_id, "downloading",
         )
         return len(items)
 
@@ -463,6 +473,11 @@ class TaskRunner:
 
         settings = get_settings()
         await self._ensure_runnable(task_id)
+        await self._log(
+            "info", "image_resolve_started", f"正在解析第 {page.pic_index} 张图片",
+            task_id, manga_id, "downloading",
+            {"page_index": page.pic_index, "page_url": page.page_url},
+        )
         html = await smart_fetch(page.page_url, referer=settings.manga_main_url)
         await self._ensure_runnable(task_id)
         pic_url = manga_parser.parse_pic_url(html, page.page_url)
@@ -479,7 +494,7 @@ class TaskRunner:
                 {"page_index": page.pic_index, "page_url": page.page_url},
             )
         async with SessionLocal() as session:
-            return await MangaRepository(session).upsert_pic_page(
+            resolved = await MangaRepository(session).upsert_pic_page(
                 manga_id=manga_id,
                 page_index=page.page_index,
                 page_url=page.page_url,
@@ -489,6 +504,13 @@ class TaskRunner:
                 status=status,
                 error_message=error,
             )
+        if pic_url:
+            await self._log(
+                "info", "image_url_resolved", f"第 {page.pic_index} 张图片地址解析成功",
+                task_id, manga_id, "downloading",
+                {"page_index": page.pic_index, "page_url": page.page_url},
+            )
+        return resolved
 
     async def _download_page_image(
         self, task_id: str, manga_id: str, page: MangaPicPage, file_path: Path,
@@ -504,7 +526,8 @@ class TaskRunner:
         settings = get_settings()
 
         async def fetch_image() -> tuple[bytes, PreparedImage]:
-            data = await smart_fetch_bytes(page.pic_url, referer=page.page_url)
+            async with self._image_slot():
+                data = await smart_fetch_bytes(page.pic_url, referer=page.page_url)
             await self._ensure_runnable(task_id)
             prepared = await asyncio.to_thread(
                 prepare_image, data, enabled=settings.enable_image_compression,

@@ -9,7 +9,8 @@ from pathlib import Path
 def atomic_output_path(target: Path) -> Iterator[Path]:
     """Keep the old file until a same-directory temporary file is fully written."""
     target.parent.mkdir(parents=True, exist_ok=True)
-    fd, name = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".tmp", dir=target.parent)
+    # 最终文件名可能已接近文件系统的字节上限，临时文件不再重复它。
+    fd, name = tempfile.mkstemp(prefix=".wnacg-", suffix=".tmp", dir=target.parent)
     os.close(fd)
     temporary = Path(name)
     try:

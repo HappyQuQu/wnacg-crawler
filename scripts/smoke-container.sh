@@ -15,12 +15,37 @@ trap cleanup EXIT
 # Exercise the bundled browser using only an in-memory page.
 docker run --rm -i --network none "$IMAGE" python - <<'PY'
 import asyncio
+import zipfile
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+from PIL import Image
 from playwright.async_api import async_playwright
+from playwright_stealth import Stealth
+
+from backend.app.crawler.block_detector import is_blocked
+from backend.app.services.archive_service import create_zip, is_complete_zip
+
+assert not is_blocked(200, '<h2>Gallery</h2><script src="/slider-captcha.js"></script>')
+assert is_blocked(200, '<h1>403 Forbidden</h1>')
+with TemporaryDirectory() as root:
+    source = Path(root) / "images"
+    source.mkdir()
+    page = source / "page.png"
+    Image.new("RGB", (8, 8), "blue").save(page)
+    for name in ("a" * 251 + ".zip", "[382868] " + "漫" * 78 + ".zip"):
+        target = Path(root) / name
+        create_zip(source, target, [page])
+        assert is_complete_zip(target, [page])
+        with zipfile.ZipFile(target) as archive:
+            assert archive.namelist() == ["page.png"]
+    assert not list(Path(root).glob(".*.tmp"))
 
 async def main():
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(args=["--no-sandbox"])
         page = await browser.new_page()
+        await Stealth().apply_stealth_async(page)
         await page.set_content("<title>WNACG smoke</title>")
         assert await page.title() == "WNACG smoke"
         await browser.close()
