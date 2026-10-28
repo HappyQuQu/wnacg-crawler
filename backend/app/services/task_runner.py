@@ -343,6 +343,7 @@ class TaskRunner:
         async with SessionLocal() as session:
             repo = MangaRepository(session)
             cached = {page.pic_index: page for page in await repo.list_pic_pages(manga_id)}
+            pending = []
             for item in items:
                 cached_page = cached.get(item.pic_index)
                 if (
@@ -351,15 +352,18 @@ class TaskRunner:
                     and cached_page.pic_url
                 ):
                     continue
-                await repo.upsert_pic_page(
+                pending.append(MangaPicPage(
                     manga_id=manga_id,
                     page_index=item.pic_index,
+                    pic_index=item.pic_index,
                     page_url=item.page_url,
                     page_name=item.page_name,
                     pic_num=item.pic_num,
                     pic_url=item.pic_url,
                     status="resolved" if item.pic_url else "pending",
-                )
+                    error_message="",
+                ))
+            await repo.upsert_pic_pages(pending)
 
         await self._set_manga_status(manga_id, "ready", pic_count=len(items))
         await self._log(

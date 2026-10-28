@@ -1,6 +1,7 @@
 import zipfile
 import zlib
 from collections.abc import Sequence
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from backend.app.core.files import atomic_output_path
@@ -46,12 +47,19 @@ def create_zip(source: Path, target: Path, files: Sequence[Path] | None = None) 
             and path.suffix.lower() in SUPPORTED_EXTENSIONS
         ]
     )
-    if not selected or any(not is_valid_image_file(path) for path in selected):
-        raise ValueError("图片不完整或校验失败，无法打包")
+    _validate_images(selected)
     with atomic_output_path(target) as temporary:
-        with zipfile.ZipFile(temporary, "w", zipfile.ZIP_DEFLATED) as archive:
+        with zipfile.ZipFile(temporary, "w", zipfile.ZIP_DEFLATED, compresslevel=1) as archive:
             for path in selected:
                 archive.write(path, path.name)
         with zipfile.ZipFile(temporary) as archive:
             if archive.testzip() is not None:
                 raise ValueError("ZIP 校验失败")
+
+
+def _validate_images(files: Sequence[Path]) -> None:
+    if not files:
+        raise ValueError("图片不完整或校验失败，无法打包")
+    with ThreadPoolExecutor(max_workers=2) as workers:
+        if not all(workers.map(is_valid_image_file, files)):
+            raise ValueError("图片不完整或校验失败，无法打包")

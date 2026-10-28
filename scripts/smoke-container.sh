@@ -22,9 +22,12 @@ from tempfile import TemporaryDirectory
 from PIL import Image
 from playwright.async_api import async_playwright
 from playwright_stealth import Stealth
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from backend.app.crawler.block_detector import is_blocked
 from backend.app.crawler.parser import manga_parser
+from backend.app.db.models import Base, MangaPicPage
+from backend.app.db.repository import MangaRepository
 from backend.app.services.archive_service import create_zip, is_complete_zip
 
 assert not is_blocked(200, '<h2>Gallery</h2><script src="/slider-captcha.js"></script>')
@@ -53,6 +56,25 @@ with TemporaryDirectory() as root:
     assert not list(Path(root).glob(".*.tmp"))
 
 async def main():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    pages = [MangaPicPage(
+        manga_id="999", page_index=i, pic_index=i, page_url=f"reader#image-{i}",
+        page_name=f"image-{i}", pic_num=str(i), pic_url=f"https://cdn.test/{i}.png",
+        status="resolved", error_message="",
+    ) for i in range(1, 504)]
+    async with sessions() as session:
+        await MangaRepository(session).upsert_pic_pages(pages)
+    pages[-1].pic_url = "https://cdn.test/refreshed.png"
+    async with sessions() as session:
+        await MangaRepository(session).upsert_pic_pages([pages[-1]])
+    async with sessions() as session:
+        stored = await MangaRepository(session).list_pic_pages("999")
+        assert [page.pic_index for page in stored] == list(range(1, 504))
+        assert stored[-1].pic_url == "https://cdn.test/refreshed.png"
+    await engine.dispose()
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(args=["--no-sandbox"])
         page = await browser.new_page()
