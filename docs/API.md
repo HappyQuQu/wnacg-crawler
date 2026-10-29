@@ -384,6 +384,24 @@ invalid
 failed
 ```
 
+### PATCH /api/library/receipts
+
+请求 `{"manga_ids": ["123456", "123457"], "taken": true}`，补记已下载；
+`taken: false` 改回未下载。返回 `updated` ID 列表、逐项 `failed` 和 `taken`。
+下载时间持久化到数据库，重复下载或补记保留首次记录时间；撤销下载标记不会清除文件清理历史。
+列表和详情新增 `taken_at`、`files_removed_at`（带时区时间或 null）、`has_local_files`（服务器是否仍有文件）。
+旧资料没有下载记录时显示未下载，可批量补记。准备 ZIP 不写下载记录；实际文件响应正常发送完成后自动记录，并广播 `{"type":"library_updated","manga_ids":["123456"]}`，通知页面刷新。请求失败、发送异常或浏览器断开时不记录。记录反映服务器已完成文件发送，不能证明浏览器的磁盘写入。
+
+### POST /api/library/cleanup
+
+请求 `{"manga_ids": ["123456", "123457"]}`，仅清理服务器文件。返回 `cleaned` ID 列表和逐项 `failed`。
+
+- 删除所属作品在 Manga、Original、Zip 下的图片、原图与 ZIP，沿用删除接口的路径检查和活跃任务限制。
+- 保留作品信息、目录/图片详情、文件索引、已结束任务、日志及下载标记，记录 `files_removed_at`。
+- 文件清理后汇总状态为 `archived`（文件已清理），不算下载失败或待修复；不会将任务状态改为 archived。
+- 重复清理可安全执行；重新添加下载任务后显示实际任务状态，文件恢复后显示实际完整度，下载标记仍保留。
+- 不替用户确认电脑备份；界面清理前必须明确确认，未下载到电脑的作品需特别提醒。
+
 ### POST /api/library/delete
 
 请求 `{"manga_ids": ["123456", "123457"], "delete_files": false}`。

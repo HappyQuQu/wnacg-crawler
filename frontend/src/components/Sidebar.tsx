@@ -1,7 +1,6 @@
 import {
   BookOpen,
   ClipboardList,
-  Download,
   FileText,
   LayoutDashboard,
   Plus,
@@ -36,11 +35,11 @@ export function Sidebar({
     <aside className="sidebar">
       <div className="brand">
         <div className="brand-mark">
-          <Download size={20} />
+          <img src="/favicon.svg" alt="" width="40" height="40" />
         </div>
         <div>
-          <strong>WNACG Downloader</strong>
-          <span>本地采集工作台</span>
+          <strong>WNACG 下载器</strong>
+          <span>下载、收藏与资料管理</span>
         </div>
       </div>
 

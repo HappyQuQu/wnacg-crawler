@@ -1,14 +1,15 @@
-import { apiFetch, connectionErrorMessage, getSettings, type ExtensionSettings } from "./shared.js";
+import { apiFetch, connectionErrorMessage, ensureServerAccess, getSettings, ServerAccessError, type ExtensionSettings } from "./shared.js";
 
-export type ConnectionResult = { connected: boolean; message: string; settings: ExtensionSettings; saved: boolean; unauthorized: boolean };
+export type ConnectionResult = { connected: boolean; message: string; settings: ExtensionSettings; saved: boolean; unauthorized: boolean; permissionRequired: boolean };
 type Callbacks = { onSaved?: (settings: ExtensionSettings) => void; onTest?: (result: ConnectionResult) => void };
 
-export async function checkConnection(settings: ExtensionSettings, saved = true): Promise<ConnectionResult> {
+export async function checkConnection(settings: ExtensionSettings, saved = true, requestAccess = false): Promise<ConnectionResult> {
   try {
+    if (requestAccess) await ensureServerAccess(settings.serverUrl, true);
     await apiFetch("/api/extension/status", { signal: AbortSignal.timeout(8000) }, settings);
-    return { connected: true, message: "后台连接正常", settings, saved, unauthorized: false };
+    return { connected: true, message: "后台连接正常", settings, saved, unauthorized: false, permissionRequired: false };
   } catch (error) {
-    return { connected: false, message: connectionErrorMessage(error), settings, saved, unauthorized: error instanceof Error && /HTTP (401|403)\b/.test(error.message) };
+    return { connected: false, message: connectionErrorMessage(error), settings, saved, unauthorized: error instanceof Error && /HTTP (401|403)\b/.test(error.message), permissionRequired: error instanceof ServerAccessError };
   }
 }
 
@@ -68,7 +69,7 @@ export async function initConnectionEditor(callbacks: Callbacks = {}): Promise<v
     if (busy || !update()) return;
     const draft = read(), isSaved = changed() === 0;
     busy = true; test.textContent = "检测中…"; update();
-    const result = await checkConnection(draft, isSaved);
+    const result = await checkConnection(draft, isSaved, true);
     callbacks.onTest?.(result);
     notify(result.connected ? isSaved ? "后台连接正常。" : "连接正常，当前更改尚未保存。" : result.message, result.connected ? "ok" : "err");
     busy = false; test.textContent = "测试连接"; update();
@@ -78,6 +79,7 @@ export async function initConnectionEditor(callbacks: Callbacks = {}): Promise<v
     const settings = read();
     busy = true; save.textContent = "保存中…"; update();
     try {
+      await ensureServerAccess(settings.serverUrl, true);
       await chrome.storage.local.set(settings);
       baseline = settings;
       apply(settings);
@@ -85,7 +87,7 @@ export async function initConnectionEditor(callbacks: Callbacks = {}): Promise<v
       const result = await checkConnection(settings);
       callbacks.onTest?.(result);
       notify(result.connected ? "设置已保存，后台连接正常。" : `设置已保存。${result.message}`, result.connected ? "ok" : "warn");
-    } catch { notify("保存失败，当前编辑已保留，请重试。", "err"); }
+    } catch (error) { notify(error instanceof ServerAccessError ? error.message : "保存失败，当前编辑已保留，请重试。", "err"); }
     finally { busy = false; save.textContent = "保存设置"; update(); }
   });
   try { const saved = await getSettings(); baseline = { serverUrl: saved.serverUrl.trim().replace(/\/+$/, ""), adminUrl: saved.adminUrl.trim().replace(/\/+$/, ""), token: saved.token.trim() }; apply(baseline); }

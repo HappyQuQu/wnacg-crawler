@@ -49,12 +49,12 @@ export function LibraryDownloads({ result, progress, busy, sending, onRetryAll, 
         <button className="icon-button" title="关闭提示，不影响文件下载" aria-label="关闭下载清单" onClick={onClose}><X size={16} /></button>
       </div>
       <div id={bodyId} className="download-center-body" hidden={!expanded}>
-        <p className="batch-hint">每项作品为一个独立 ZIP。未收到文件时，可允许浏览器连续下载，或点击下方文件链接重试。</p>
+        <p className="batch-hint">下载完成后自动记录。未收到文件时，可点击文件名重试。</p>
         <ul className="download-file-list">
           {result.failed.map((file) => <li key={file.manga_id} className="download-failure"><AlertTriangle size={14} /><span>ID {file.manga_id}：{file.error}</span></li>)}
           {result.ready.map((file) => <li key={file.manga_id}><Download size={14} /><a href={file.url} download={file.filename}>{file.filename}</a></li>)}
         </ul>
-        <div className="download-center-footer"><span>{ready} 个独立文件{failed ? ` · ${failed} 项无法下载` : ""}</span><button className="button secondary" disabled={busy || !ready} onClick={onRetryAll}><Download size={14} />{sending ? "发起中…" : "重新发起全部"}</button></div>
+        <div className="download-center-footer"><span>{ready} 个独立文件{failed ? ` · ${failed} 项无法下载` : ""}</span><button className="button secondary" disabled={busy || !ready} onClick={onRetryAll}><Download size={14} />{sending ? "发起中…" : "全部重试"}</button></div>
       </div>
     </section>
   );

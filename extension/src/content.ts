@@ -1,5 +1,6 @@
-// ── Types ──────────────────────────────────────────────────────────────
-type ButtonState = "idle" | "loading" | "done" | "dup" | "error" | "downloaded";
+import type { ItemStatus, LibraryPresence } from "./shared.js";
+
+type ButtonState = "idle" | "loading" | "done" | "dup" | "error" | "downloaded" | "archived" | "unknown" | "attention";
 
 function extractMangaId(url: string): string | null {
   const match = url.match(/aid-(\d+)/);
@@ -18,18 +19,33 @@ function detailMangaId(): string | null {
   return location.pathname.match(/^\/photos-index(?:-page-\d+)?-aid-(\d+)\.html$/)?.[1] ?? null;
 }
 
-// ── Existing task / library cache (populated once on load) ─────────────
-const taskIds = new Set<string>();
-const downloadedIds = new Set<string>();
+// ── Persisted task and library state ───────────────────────────────────
+const taskStates = new Map<string, string>();
+const libraryItems = new Map<string, LibraryPresence>();
+let knownLoaded = false;
+let knownError = "正在检查资料库…";
 
 async function prefetchKnown(): Promise<void> {
   try {
     const resp = await chrome.runtime.sendMessage({ type: "GET_KNOWN_IDS" });
-    if (resp && Array.isArray(resp.taskIds)) resp.taskIds.forEach((id: string) => taskIds.add(id));
-    if (resp && Array.isArray(resp.libraryIds)) resp.libraryIds.forEach((id: string) => downloadedIds.add(id));
-  } catch {
-    // non-fatal
+    if (!resp?.ok || !Array.isArray(resp.tasks) || !Array.isArray(resp.library)) {
+      throw new Error(resp?.error || "无法读取资料库状态，请刷新后重试");
+    }
+    taskStates.clear();
+    libraryItems.clear();
+    resp.tasks.forEach((item: { manga_id: string; status: string }) => {
+      if (["pending", "queued", "running", "paused"].includes(item.status)) taskStates.set(item.manga_id, item.status);
+    });
+    resp.library.forEach((item: LibraryPresence) => libraryItems.set(item.manga_id, item));
+    knownLoaded = true;
+  } catch (error) {
+    knownLoaded = false;
+    knownError = error instanceof Error ? error.message : "后台未连接，服务器状态未知";
   }
+}
+
+function presenceLabel(item: LibraryPresence): string {
+  return `${item.has_local_files ? "服务器有文件" : item.files_removed_at ? "服务器已清理" : "服务器无文件"} · ${item.taken_at ? "已下载" : "未下载"}`;
 }
 
 // ── Inject styles ──────────────────────────────────────────────────────
@@ -39,7 +55,7 @@ function injectStyles(): void {
   const el = document.createElement("style");
   el.id = id;
   el.textContent = `
-    .wnacg-q-btn { --q-bg:#fff; --q-text:#0066d6; --q-line:rgba(60,60,67,.16); position:absolute; top:7px; right:7px; z-index:99999; display:inline-flex; align-items:center; gap:5px; min-height:27px; padding:4px 8px; border:1px solid var(--q-line); border-radius:7px; background:var(--q-bg); color:var(--q-text); box-shadow:0 1px 4px #0000000d; font:550 11px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; cursor:pointer; white-space:nowrap; pointer-events:auto; transition:background 150ms,border-color 150ms; }
+    .wnacg-q-btn { --q-bg:#fff; --q-text:#0066d6; --q-line:rgba(60,60,67,.16); position:absolute; top:7px; right:7px; z-index:99999; display:inline-flex; align-items:center; gap:5px; min-height:27px; padding:4px 8px; border:1px solid var(--q-line); border-radius:7px; background:var(--q-bg); color:var(--q-text); box-shadow:0 1px 4px #0000000d; font:550 11px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; cursor:pointer; white-space:normal; max-width:calc(100% - 14px); text-align:left; pointer-events:auto; transition:background 150ms,border-color 150ms; }
     .wnacg-q-btn svg { width:13px; height:13px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; flex-shrink:0; }
     .wnacg-q-btn:hover:not(:disabled) { border-color:#007aff; background:#e8f2ff; }
     .wnacg-q-btn:focus-visible { outline:2px solid #007aff; outline-offset:2px; }
@@ -47,6 +63,7 @@ function injectStyles(): void {
     .wnacg-q-btn[data-state="done"],.wnacg-q-btn[data-state="downloaded"] { color:#248a3d; }
     .wnacg-q-btn[data-state="dup"] { color:#636366; }
     .wnacg-q-btn[data-state="error"] { color:#c93400; }
+    .wnacg-q-btn[data-state="archived"],.wnacg-q-btn[data-state="attention"],.wnacg-q-btn[data-state="unknown"] { color:#9a6700; }
     .wnacg-q-item { position:relative; }
     .wnacg-q-status { position:fixed; bottom:12px; right:12px; z-index:999999; display:flex; align-items:center; gap:7px; max-width:calc(100vw - 24px); padding:10px 13px; border:1px solid rgba(60,60,67,.16); border-radius:10px; background:#fff; color:#636366; font:500 11px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; box-shadow:0 2px 12px #0000000d; pointer-events:none; }
     .wnacg-q-status svg { width:15px; height:15px; color:#0066d6; fill:none; stroke:currentColor; stroke-width:1.8; flex-shrink:0; }
@@ -100,6 +117,7 @@ function initDetailPage(mangaId: string): void {
     #wnacg-detail-panel .wnacg-detail-header,#wnacg-detail-panel .wnacg-detail-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
     #wnacg-detail-panel .wnacg-detail-header { margin-bottom:12px; }
     #wnacg-detail-panel .wnacg-detail-mark { display:grid; place-items:center; width:30px; height:31px; border-radius:8px; color:#fff; background:#007aff; }
+    #wnacg-detail-panel .wnacg-detail-mark img { display:block; width:100%; height:100%; }
     #wnacg-detail-panel .wnacg-detail-brand-copy { display:grid; gap:2px; margin-right:auto; min-width:0; }
     #wnacg-detail-panel .wnacg-detail-brand { margin:0; color:var(--wd-text); font-size:12px; font-weight:650; }
     #wnacg-detail-panel .wnacg-detail-brand-copy > span { color:var(--wd-muted); font-size:10px; }
@@ -123,10 +141,10 @@ function initDetailPage(mangaId: string): void {
 
   const panel = document.createElement("section");
   panel.id = "wnacg-detail-panel";
-  panel.setAttribute("aria-label", "WNACG Downloader 下载入口");
+  panel.setAttribute("aria-label", "WNACG 下载器 下载入口");
   panel.innerHTML = `
     <div class="wnacg-detail-header">
-      <span class="wnacg-detail-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 16v4h14v-4"/></svg></span><div class="wnacg-detail-brand-copy"><strong class="wnacg-detail-brand">WNACG Downloader</strong><span>浏览器扩展 · 作品入口</span></div>
+      <span class="wnacg-detail-mark"><img src="${chrome.runtime.getURL("icons/icon.svg")}" alt="" width="30" height="31"></span><div class="wnacg-detail-brand-copy"><strong class="wnacg-detail-brand">WNACG 下载器</strong><span>浏览器扩展 · 作品入口</span></div>
       <span class="wnacg-detail-status" role="status">连接中</span>
     </div>
     <p class="wnacg-detail-meta" role="status"></p>
@@ -151,18 +169,20 @@ function initDetailPage(mangaId: string): void {
   const refresh = panel.querySelector<HTMLButtonElement>(".wnacg-detail-refresh")!;
   const statusLabels: Record<string, string> = {
     ready: "可加入下载队列", pending: "待确认", queued: "排队中", running: "下载中",
-    paused: "已暂停，请在后台继续", partial: "部分完成，可重新加入", completed: "已下载",
+    paused: "已暂停，请在后台继续", partial: "部分完成，可重新加入", completed: "有文件",
+    archived: "已清理，可重新下载",
     failed: "下载失败，可重新加入", cancelled: "已取消，可重新加入",
   };
   let refreshing = false;
   let submitting = false;
   meta.textContent = `ID ${mangaId} · 正在检查本地状态…`;
 
-  function showItemStatus(itemStatus: string): void {
-    meta.textContent = `ID ${mangaId} · ${statusLabels[itemStatus] ?? itemStatus}`;
+  function showItemStatus(item: ItemStatus): void {
+    const itemStatus = item.status;
+    meta.textContent = `ID ${mangaId} · ${item.in_library ? presenceLabel(item) : "服务器无记录"} · ${statusLabels[itemStatus] ?? itemStatus}`;
     submit.disabled = ["pending", "queued", "running", "paused", "completed"].includes(itemStatus);
-    submit.textContent = itemStatus === "completed" ? "已下载" :
-      itemStatus === "paused" ? "已暂停" : submit.disabled ? "已在队列" : "加入队列";
+    submit.textContent = itemStatus === "completed" ? "服务器有文件" :
+      itemStatus === "paused" ? "已暂停" : submit.disabled ? "已在队列" : itemStatus === "archived" ? "重新下载" : "加入队列";
   }
 
   async function refreshStatus(): Promise<void> {
@@ -183,7 +203,7 @@ function initDetailPage(mangaId: string): void {
       }
       status.textContent = "已连接";
       status.dataset.connected = "true";
-      showItemStatus(resp.data.status);
+      showItemStatus(resp.data as ItemStatus);
     } catch {
       status.textContent = "未连接";
       status.dataset.connected = "false";
@@ -220,7 +240,6 @@ function initDetailPage(mangaId: string): void {
     submitting = false;
     refresh.disabled = false;
     if (result.ok) {
-      if (result.status) showItemStatus(result.status);
       await refreshStatus();
     } else {
       submit.disabled = false;
@@ -239,15 +258,30 @@ function initDetailPage(mangaId: string): void {
 // ── Button state management ────────────────────────────────────────────
 function setBtnState(btn: HTMLElement, state: ButtonState, label?: string): void {
   btn.dataset.state = state;
-  btn.toggleAttribute("disabled", ["loading", "done", "dup", "downloaded"].includes(state));
+  btn.toggleAttribute("disabled", ["loading", "done", "dup", "downloaded", "unknown"].includes(state));
   const paths = state === "idle" ? '<path d="M12 5v14M5 12h14"/>' : state === "error" ? '<path d="m6 6 12 12M6 18 18 6"/>' : state === "loading" ? '<path d="M20 12a8 8 0 1 1-8-8"/>' : '<path d="m5 12 4 4L19 6"/>';
-  const defaultLabels: Record<ButtonState, string> = { idle: "加入队列", loading: "提交中…", done: "已加入", dup: "已在队列", downloaded: "已下载", error: "重试加入" };
+  const defaultLabels: Record<ButtonState, string> = { idle: "添加下载", loading: "提交中…", done: "已加入", dup: "已在队列", downloaded: "服务器有文件", archived: "已清理 · 重新下载", unknown: "服务器状态未知", attention: "服务器文件不完整 · 重新加入", error: "重试加入" };
   btn.replaceChildren();
   btn.insertAdjacentHTML("afterbegin", `<svg viewBox="0 0 24 24" aria-hidden="true">${paths}</svg>`);
   const text = document.createElement("span");
   text.textContent = label ?? defaultLabels[state];
   btn.appendChild(text);
   if (state === "error") setTimeout(() => { if (btn.dataset.state === "error") setBtnState(btn, "idle"); }, 2500);
+}
+
+function showListStatus(btn: HTMLElement): void {
+  if (btn.dataset.state === "loading") return;
+  const mangaId = btn.dataset.mangaId!;
+  const item = libraryItems.get(mangaId);
+  const taskStatus = taskStates.get(mangaId);
+  btn.dataset.taken = String(!!item?.taken_at);
+  btn.title = !knownLoaded ? knownError : item ? presenceLabel(item) : "服务器无记录";
+  if (!knownLoaded) setBtnState(btn, "unknown");
+  else if (taskStatus) setBtnState(btn, "dup", `${taskStatus === "running" ? "下载中" : taskStatus === "paused" ? "已暂停" : "已在队列"}${item?.taken_at ? " · 已下载" : ""}`);
+  else if (item?.status === "completed") setBtnState(btn, "downloaded", presenceLabel(item));
+  else if (item?.status === "archived") setBtnState(btn, "archived", `已清理 · ${item.taken_at ? "已下载" : "未下载"} · 重新下载`);
+  else if (item) setBtnState(btn, "attention", `${item.has_local_files ? "服务器文件不完整" : "服务器无文件"} · ${item.taken_at ? "已下载" : "未下载"} · 加入队列`);
+  else setBtnState(btn, "idle");
 }
 
 // ── Find the best container to attach the button to ────────────────────
@@ -304,14 +338,7 @@ function scanAndInject(): void {
       ) ?? a;
     btn.dataset.titleHint = (titleEl.textContent ?? "").trim().slice(0, 120);
 
-    // Pre-mark items based on status
-    if (downloadedIds.has(mangaId)) {
-      setBtnState(btn, "downloaded");
-    } else if (taskIds.has(mangaId)) {
-      setBtnState(btn, "dup");
-    } else {
-      setBtnState(btn, "idle");
-    }
+    showListStatus(btn);
 
     container.appendChild(btn);
   });
@@ -323,13 +350,16 @@ let statusCount = 0;
 
 function updateStatusBar(): void {
   if (!statusBar) return;
+  if (!knownLoaded) { statusBar.textContent = knownError; return; }
   const injected = document.querySelectorAll(".wnacg-q-btn").length;
   const dlCount = document.querySelectorAll('.wnacg-q-btn[data-state="downloaded"]').length;
   const queued = document.querySelectorAll('.wnacg-q-btn[data-state="done"],.wnacg-q-btn[data-state="dup"]').length;
   statusBar.replaceChildren();
   statusBar.insertAdjacentHTML("afterbegin", '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 16v4h14v-4"/></svg>');
   const text = document.createElement("span");
-  text.textContent = injected + " 项 · " + dlCount + " 已下载 · " + queued + " 已在队列" + (statusCount > 0 ? " · 本次 +" + statusCount : "");
+  const historical = document.querySelectorAll('.wnacg-q-btn[data-state="archived"]').length;
+  const taken = document.querySelectorAll('.wnacg-q-btn[data-taken="true"]').length;
+  text.textContent = `本页 ${injected} · 服务器有 ${dlCount} · 已下载 ${taken} · 已清理 ${historical} · 排队 ${queued}` + (statusCount > 0 ? " · 本次 +" + statusCount : "");
   statusBar.appendChild(text);
 }
 
@@ -352,7 +382,7 @@ function onButtonClick(e: Event): void {
   e.stopPropagation();
 
   const state = btn.dataset.state;
-  if (state && state !== "idle" && state !== "error") return;
+  if (state && !["idle", "error", "archived", "attention"].includes(state)) return;
 
   const mangaId = btn.dataset.mangaId;
   const href = btn.dataset.href ?? "";
@@ -364,11 +394,11 @@ function onButtonClick(e: Event): void {
     const result = await submitOne(mangaId, href, titleHint);
     if (result.ok && !result.dup) {
       setBtnState(btn, "done");
-      taskIds.add(mangaId);
+      taskStates.set(mangaId, "queued");
       statusCount++;
     } else if (result.ok && result.dup) {
       setBtnState(btn, "dup");
-      taskIds.add(mangaId);
+      taskStates.set(mangaId, "queued");
     } else {
       setBtnState(btn, "error");
     }
@@ -378,6 +408,18 @@ function onButtonClick(e: Event): void {
 
 // ── Keep buttons alive across lazy-load / infinite scroll ──────────────
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+let refreshingList = false;
+
+async function refreshListStatus(): Promise<void> {
+  if (refreshingList) return;
+  refreshingList = true;
+  try {
+    await prefetchKnown();
+    scanAndInject();
+    document.querySelectorAll<HTMLElement>(".wnacg-q-btn").forEach(showListStatus);
+    updateStatusBar();
+  } finally { refreshingList = false; }
+}
 
 function scheduleScan(): void {
   if (debounceTimer) clearTimeout(debounceTimer);
@@ -407,8 +449,9 @@ async function init(): Promise<void> {
   injectStyles();
   createStatusBar();
 
-  await prefetchKnown();
-  scanAndInject();
+  await refreshListStatus();
+  setInterval(() => { if (!document.hidden) void refreshListStatus(); }, 15000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) void refreshListStatus(); });
 
   // Click delegation on document
   document.addEventListener("click", onButtonClick, true);

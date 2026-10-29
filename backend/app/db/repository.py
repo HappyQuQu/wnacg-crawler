@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from uuid import uuid4
 
-from sqlalchemy import delete, desc, func, or_, select, text
+from sqlalchemy import delete, desc, func, or_, select, text, update
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +12,7 @@ from backend.app.db.models import (
     AppLog,
     DownloadFile,
     DownloadTask,
+    LibraryReceipt,
     MangaInfo,
     MangaPage,
     MangaPicPage,
@@ -35,9 +36,45 @@ class MangaRepository:
         await self.session.execute(text("BEGIN IMMEDIATE"))
 
     async def delete(self, manga_id: str) -> None:
-        for model in (DownloadFile, MangaPicPage, MangaPage):
+        for model in (DownloadFile, MangaPicPage, MangaPage, LibraryReceipt):
             await self.session.execute(delete(model).where(model.manga_id == manga_id))
         await self.session.execute(delete(MangaInfo).where(MangaInfo.id == manga_id))
+
+    async def list_receipts(self, manga_ids: set[str]) -> dict[str, LibraryReceipt]:
+        result = await self.session.execute(
+            select(LibraryReceipt).where(LibraryReceipt.manga_id.in_(manga_ids))
+        )
+        return {row.manga_id: row for row in result.scalars()}
+
+    async def set_taken(self, manga_ids: list[str], taken: bool) -> list[str]:
+        result = await self.session.execute(select(MangaInfo.id).where(MangaInfo.id.in_(manga_ids)))
+        existing = set(result.scalars())
+        updated = [manga_id for manga_id in manga_ids if manga_id in existing]
+        if updated:
+            if taken:
+                await self.session.execute(
+                    insert(LibraryReceipt).values([
+                        {"manga_id": manga_id, "taken_at": func.now()} for manga_id in updated
+                    ]).on_conflict_do_update(
+                        index_elements=["manga_id"],
+                        set_={"taken_at": func.coalesce(LibraryReceipt.taken_at, func.now())},
+                    )
+                )
+            else:
+                await self.session.execute(
+                    update(LibraryReceipt).where(LibraryReceipt.manga_id.in_(updated))
+                    .values(taken_at=None)
+                )
+            await self.session.commit()
+        return updated
+
+    async def mark_files_removed(self, manga_id: str) -> None:
+        await self.session.execute(
+            insert(LibraryReceipt).values(manga_id=manga_id, files_removed_at=func.now())
+            .on_conflict_do_update(
+                index_elements=["manga_id"], set_={"files_removed_at": func.now()},
+            )
+        )
 
     async def list_infos(self, q: str | None = None, status: str | None = None) -> list[MangaInfo]:
         stmt = select(MangaInfo).order_by(desc(MangaInfo.updated_at), desc(MangaInfo.created_at))

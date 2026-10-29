@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LibraryItem, LibrarySortKey, LibraryViewMode } from "../types";
 import { fetchLibrary, fetchLibraryDetail, verifyLibraryApi, zipLibraryApi, retryFailedLibraryApi } from "../api";
 import { isProblemFile } from "../utils";
+import { useWsLibraryUpdate } from "./useWebSocket";
 
 export function useLibrary() {
   const [libraryItems, setLibraryItems] = useState<LibraryItem[]>([]);
@@ -90,6 +91,13 @@ export function useLibrary() {
     return result;
   }, []);
 
+  useWsLibraryUpdate((mangaIds) => {
+    void refresh().catch(() => {});
+    if (selectedLibraryId && mangaIds.includes(selectedLibraryId)) {
+      void loadDetail(selectedLibraryId).catch(() => {});
+    }
+  });
+
   const selectedLibraryFiles = useMemo(() => {
     const files = selectedLibraryItem?.files ?? [];
     return showOnlyProblemFiles ? files.filter(isProblemFile) : files;
@@ -105,7 +113,7 @@ export function useLibrary() {
     completed: libraryItems.filter((i) => i.status === "completed").length,
     partial: libraryItems.filter((i) => i.status === "partial").length,
     failed: libraryItems.filter((i) => i.status === "failed").length,
-    missing: libraryItems.filter((i) => i.status === "missing" || i.missing_files > 0 || i.failed_files > 0).length,
+    missing: libraryItems.filter((i) => i.status !== "archived" && (i.status === "missing" || i.missing_files > 0 || i.failed_files > 0)).length,
     zipped: libraryItems.filter((i) => i.zip_exists).length,
     unzipped: libraryItems.filter((i) => !i.zip_exists).length,
   }), [libraryItems]);

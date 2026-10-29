@@ -102,7 +102,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    document.title = `${viewCopy[activeView]} · WNACG Downloader`;
+    document.title = `${viewCopy[activeView]} · WNACG`;
     window.scrollTo(0, 0);
   }, [activeView]);
 
