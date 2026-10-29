@@ -4,8 +4,8 @@ import { checkConnection, initConnectionEditor, type ConnectionResult } from "./
 let connectionVersion = 0;
 function showConnection(result: ConnectionResult) {
   const status = document.getElementById("status-badge")!;
-  status.textContent = result.connected ? "已连接" : result.unauthorized ? "未配对" : "离线";
-  status.className = `badge connection-badge ${result.connected ? "badge-green" : result.unauthorized ? "badge-orange" : "badge-red"}`;
+  status.textContent = result.connected ? "已连接" : result.permissionRequired ? "待授权" : result.unauthorized ? "未配对" : "离线";
+  status.className = `badge connection-badge ${result.connected ? "badge-green" : result.unauthorized || result.permissionRequired ? "badge-orange" : "badge-red"}`;
   const state = document.getElementById("test-state")!;
   state.textContent = result.connected ? "连接正常" : "连接未完成";
   state.className = `badge ${result.connected ? "badge-green" : "badge-orange"}`;

@@ -6,7 +6,7 @@ export function isLibraryActive(item: LibraryItem): boolean {
 }
 
 export function libraryNeedsAttention(item: LibraryItem): boolean {
-  return !isLibraryActive(item) && (["partial", "failed", "missing"].includes(item.status)
+  return item.status !== "archived" && !isLibraryActive(item) && (["partial", "failed", "missing"].includes(item.status)
     || item.missing_files > 0 || item.failed_files > 0);
 }
 

@@ -22,6 +22,7 @@ button:focus-visible,input:focus-visible,.task-list:focus-visible { outline:2px 
 .brand { display:flex; align-items:center; gap:9px; flex:1; min-width:0; }
 .brand-mark { display:grid; place-items:center; width:31px; height:32px; border-radius:8px; background:#007aff; color:#fff; flex-shrink:0; }
 .brand-mark svg { width:19px; height:19px; }
+.brand-mark img { display:block; width:100%; height:100%; }
 .brand-copy { min-width:0; }
 .brand-copy h1 { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; line-height:1.5; letter-spacing:-.2px; font-weight:650; }
 .brand-copy p { margin-top:2px; color:var(--muted); font-size:10px; line-height:1.6; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }

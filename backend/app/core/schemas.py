@@ -49,6 +49,10 @@ class LibraryDeleteRequest(LibrarySelectionRequest):
     delete_files: bool = False
 
 
+class LibraryReceiptRequest(LibrarySelectionRequest):
+    taken: bool
+
+
 class ExtensionSubmitRequest(BaseModel):
     manga_id: str = Field(pattern=r"^\d+$")
     url: str | None = None

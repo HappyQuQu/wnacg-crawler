@@ -1,9 +1,9 @@
-import { apiFetch, connectionErrorMessage, extractMangaId, getSettings } from "./shared.js";
+import { apiFetch, connectionErrorMessage, extractMangaId, getSettings, type LibraryPresence } from "./shared.js";
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
     id: "send-current-page",
-    title: "发送到 WNACG Downloader",
+    title: "发送到 WNACG 下载器",
     contexts: ["page", "link"]
   });
 });
@@ -54,13 +54,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message?.type === "GET_KNOWN_IDS") {
     Promise.all([
-      apiFetch<{ items: { manga_id: string }[] }>("/api/tasks").catch(() => ({ items: [] })),
-      apiFetch<{ items: { manga_id: string }[] }>("/api/library").catch(() => ({ items: [] })),
+      apiFetch<{ items: { manga_id: string; status: string }[] }>("/api/tasks"),
+      apiFetch<{ items: LibraryPresence[] }>("/api/library"),
     ]).then(([tasks, library]) => {
-      const taskIds = (tasks.items ?? []).map((t) => t.manga_id);
-      const libraryIds = (library.items ?? []).map((t) => t.manga_id);
-      sendResponse({ taskIds, libraryIds });
-    }).catch(() => sendResponse({ taskIds: [], libraryIds: [] }));
+      sendResponse({ ok: true, tasks: tasks.items, library: library.items });
+    }).catch((error) => sendResponse({ ok: false, error: connectionErrorMessage(error) }));
     return true;
   }
 

@@ -165,13 +165,15 @@ class TaskService:
         async with SessionLocal() as session:
             repo = TaskRepository(session)
             task = await repo.latest_for_manga(manga_id)
-            if task:
-                return {"manga_id": manga_id, "status": task.status, "task_id": task.id}
         item = await library_service.get(manga_id)
         return {
             "manga_id": manga_id,
-            "status": item["status"] if item else "ready",
-            "task_id": None,
+            "status": item["status"] if item else task.status if task else "ready",
+            "task_id": task.id if task else None,
+            "in_library": item is not None,
+            "has_local_files": item["has_local_files"] if item else False,
+            "taken_at": item["taken_at"] if item else None,
+            "files_removed_at": item["files_removed_at"] if item else None,
         }
 
     async def _enrich(self, session, result: dict) -> dict:

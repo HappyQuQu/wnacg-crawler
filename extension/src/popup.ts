@@ -1,5 +1,5 @@
-import { apiFetch, connectionErrorMessage, extractMangaId, getSettings, type PageInfo, type ExtensionSettings } from "./shared.js";
-import { initConnectionEditor } from "./connection.js";
+import { apiFetch, extractMangaId, getSettings, libraryPresenceLabel, type ItemStatus, type LibraryPresence, type PageInfo, type ExtensionSettings } from "./shared.js";
+import { checkConnection, initConnectionEditor } from "./connection.js";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const statusBadge = $("status-badge"), serverUrl = $("server-url"), notice = $("connection-notice");
@@ -7,14 +7,13 @@ const list = $("task-list"), refresh = $<HTMLButtonElement>("refresh-btn"), page
 const submit = $<HTMLButtonElement>("submit"), settingsPanel = $("settings-panel"), toggle = $<HTMLButtonElement>("settings-toggle");
 const activeStatuses = ["running", "queued", "pending", "paused"];
 type TaskItem = { task_id: string; manga_id: string; title: string; status: string; stage: string; progress_current: number; progress_total: number; last_error?: string | null };
-type ItemStatus = { manga_id: string; status: string; task_id: string | null };
 let currentPage: PageInfo = { mangaId: null, url: "", title: "" };
 let currentSettings: ExtensionSettings | null = null;
 let connected = false, refreshing = false, submitting = false;
 let taskView: "active" | "attention" = "active";
 let latestTasks: TaskItem[] = [];
 let dashboardError = "";
-const labels: Record<string, string> = { ready: "可加入", pending: "待确认", queued: "排队中", running: "运行中", paused: "已暂停", partial: "部分完成", completed: "已完成", failed: "失败", cancelled: "已取消" };
+const labels: Record<string, string> = { ready: "可加入", pending: "待确认", queued: "排队中", running: "运行中", paused: "已暂停", partial: "部分完成", completed: "有文件", failed: "失败", cancelled: "已取消", archived: "已清理" };
 const stages: Record<string, string> = { none: "等待", fetching_info: "获取信息", fetching_pages: "获取目录", resolving_images: "解析图片", downloading: "下载图片", retrying_failed_images: "修复图片", verifying: "校验", zipping: "打包", done: "完成" };
 const icon = (path: string, className = "") => `<svg class="${className}" viewBox="0 0 24 24" aria-hidden="true">${path}</svg>`;
 const arrow = icon('<path d="m9 6 6 6-6 6"/>', "task-chevron");
@@ -32,15 +31,14 @@ async function detectServer() {
     currentSettings = await getSettings();
     serverUrl.textContent = currentSettings.serverUrl;
     serverUrl.title = currentSettings.serverUrl;
-    await apiFetch("/api/extension/status", { signal: AbortSignal.timeout(8000) });
-    statusBadge.textContent = "已连接"; statusBadge.className = "badge connection-badge badge-green";
-    notice.hidden = true; return true;
-  } catch (error) {
-    const unauthorized = error instanceof Error && /HTTP (401|403)\b/.test(error.message);
-    statusBadge.textContent = unauthorized ? "未配对" : "离线";
-    statusBadge.className = `badge connection-badge ${unauthorized ? "badge-orange" : "badge-red"}`;
-    serverUrl.textContent = currentSettings?.serverUrl || "后台未连接";
-    notice.textContent = connectionErrorMessage(error); notice.hidden = false; return false;
+    const result = await checkConnection(currentSettings);
+    statusBadge.textContent = result.connected ? "已连接" : result.permissionRequired ? "待授权" : result.unauthorized ? "未配对" : "离线";
+    statusBadge.className = `badge connection-badge ${result.connected ? "badge-green" : result.permissionRequired || result.unauthorized ? "badge-orange" : "badge-red"}`;
+    notice.textContent = result.message; notice.hidden = result.connected;
+    return result.connected;
+  } catch {
+    statusBadge.textContent = "设置异常"; statusBadge.className = "badge connection-badge badge-orange";
+    notice.textContent = "无法读取连接设置，请重新打开扩展后重试。"; notice.hidden = false; return false;
   }
 }
 
@@ -67,12 +65,13 @@ function renderTasks() {
 }
 async function fetchDashboard() {
   try {
-    const [library, tasks] = await Promise.all([apiFetch<{ total: number }>("/api/library"), apiFetch<{ items: TaskItem[] }>("/api/tasks")]);
+    const [library, tasks] = await Promise.all([apiFetch<{ total: number; items: LibraryPresence[] }>("/api/library"), apiFetch<{ items: TaskItem[] }>("/api/tasks")]);
     dashboardError = "";
     latestTasks = tasks.items ?? [];
     const active = latestTasks.filter((task) => activeStatuses.includes(task.status));
     $("stat-library").textContent = String(library.total); $("stat-active").textContent = String(active.length);
-    $("stat-completed").textContent = String(latestTasks.filter((task) => task.status === "completed").length);
+    $("stat-completed").textContent = String(library.items.filter((item) => item.taken_at).length);
+    $("stat-completed").title = `未下载 ${library.items.filter((item) => !item.taken_at).length} 项`;
     $("active-count").textContent = String(active.length); $("attention-count").textContent = String(latestTasks.filter((task) => ["failed", "partial"].includes(task.status)).length);
     $("queue-breakdown").textContent = `${active.filter((task) => task.status === "running").length} 运行 · ${active.filter((task) => ["queued", "pending"].includes(task.status)).length} 等待 · ${active.filter((task) => task.status === "paused").length} 暂停`;
     renderTasks();
@@ -81,10 +80,10 @@ async function fetchDashboard() {
 
 function showItem(item: ItemStatus) {
   pageState.textContent = labels[item.status] || item.status; pageState.className = `badge ${badgeClass(item.status)}`;
-  pageMeta.textContent = `ID ${item.manga_id}`;
+  pageMeta.textContent = `ID ${item.manga_id} · ${item.in_library ? libraryPresenceLabel(item) : "服务器无记录"}`;
   const blocked = ["pending", "queued", "running", "paused", "completed"].includes(item.status);
   submit.disabled = blocked || !connected || submitting;
-  if (!submitting) submit.textContent = item.status === "completed" ? "已在资料库" : item.status === "paused" ? "已暂停" : blocked ? "已在队列" : ["partial", "failed", "cancelled"].includes(item.status) ? "重新加入" : "加入队列";
+  if (!submitting) submit.textContent = item.status === "completed" ? "服务器有文件" : item.status === "paused" ? "已暂停" : blocked ? "已在队列" : item.status === "archived" ? "重新下载" : ["partial", "failed", "cancelled"].includes(item.status) ? "重新加入" : "加入队列";
   feedback.textContent = item.status === "paused" ? "请在后台继续这个任务。" : "";
 }
 async function detectPage() {

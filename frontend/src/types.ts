@@ -72,6 +72,8 @@ export type LibraryItem = {
   manga_status: string;
   task_id: string | null;
   task_status: string | null;
+  taken_at: string | null;
+  files_removed_at: string | null;
   page_count: number;
   pic_count: number;
   total_files: number;
@@ -109,6 +111,17 @@ export type LibraryDeleteResult = {
   delete_files: boolean;
 };
 
+export type LibraryReceiptResult = {
+  updated: string[];
+  failed: LibraryBatchFailure[];
+  taken: boolean;
+};
+
+export type LibraryCleanupResult = {
+  cleaned: string[];
+  failed: LibraryBatchFailure[];
+};
+
 export type LibraryRetryFailedResult = {
   status: string;
   problem_files: number;
@@ -141,13 +154,14 @@ export type SystemAlertMessage = {
 };
 
 export type TaskLogMessage = { type: "task_log"; item: LogItem };
-export type WsMessage = TaskProgressMessage | SystemAlertMessage | TaskLogMessage;
+export type LibraryUpdatedMessage = { type: "library_updated"; manga_ids: string[] };
+export type WsMessage = TaskProgressMessage | SystemAlertMessage | TaskLogMessage | LibraryUpdatedMessage;
 
 export type WsStatus = "connecting" | "connected" | "fallback";
 export type ViewKey = "dashboard" | "tasks" | "library" | "logs" | "settings";
 export type LogFilter = "all" | "problems" | "error" | "warning" | "info";
 export type QueueFilter = "all" | "active" | "failed" | "partial" | "completed" | "attention";
-export type LibraryFilter = "all" | "completed" | "partial" | "failed" | "missing" | "zipped" | "unzipped" | "attention" | "active";
+export type LibraryFilter = "all" | "completed" | "partial" | "failed" | "missing" | "zipped" | "unzipped" | "attention" | "active" | "taken" | "not_taken" | "archived";
 export type LibrarySortKey = "updated_at" | "title" | "completeness" | "pic_count" | "zip_size";
 export type LibraryViewMode = "card" | "list";
 

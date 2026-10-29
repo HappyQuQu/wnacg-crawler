@@ -4,11 +4,13 @@ import type { LogItem, SystemAlertMessage, TaskLogMessage, TaskProgressMessage, 
 type TaskListener = (payload: TaskProgressMessage) => void;
 type AlertListener = (payload: SystemAlertMessage) => void;
 type LogListener = (item: LogItem) => void;
+type LibraryListener = (mangaIds: string[]) => void;
 
 let globalWsStatus: WsStatus = "connecting";
 let globalTaskListeners: TaskListener[] = [];
 let globalAlertListeners: AlertListener[] = [];
 let globalLogListeners: LogListener[] = [];
+let globalLibraryListeners: LibraryListener[] = [];
 let globalSocket: WebSocket | null = null;
 
 function notifyTaskListeners(payload: TaskProgressMessage) {
@@ -48,6 +50,8 @@ function connect() {
       } else if (payload.type === "task_log") {
         const { item } = payload as unknown as TaskLogMessage;
         for (const listener of globalLogListeners) listener(item);
+      } else if (payload.type === "library_updated") {
+        for (const listener of globalLibraryListeners) listener(payload.manga_ids as string[]);
       }
     } catch {
       // ignore malformed messages
@@ -137,4 +141,14 @@ export function useWsAutoRefresh(wsStatus: WsStatus, refresh: () => void) {
     const timer = window.setInterval(() => refreshRef.current(), 5000);
     return () => window.clearInterval(timer);
   }, [wsStatus]);
+}
+
+export function useWsLibraryUpdate(onUpdate: LibraryListener) {
+  const callbackRef = useRef(onUpdate);
+  callbackRef.current = onUpdate;
+  useEffect(() => {
+    const listener: LibraryListener = (ids) => callbackRef.current(ids);
+    globalLibraryListeners.push(listener);
+    return () => { globalLibraryListeners = globalLibraryListeners.filter((item) => item !== listener); };
+  }, []);
 }

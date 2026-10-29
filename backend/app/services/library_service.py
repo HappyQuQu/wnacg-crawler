@@ -13,7 +13,13 @@ from backend.app.core.time import local_isoformat
 from backend.app.crawler.downloader import image_extension
 from backend.app.crawler.images import find_valid_image_path
 from backend.app.db.database import SessionLocal
-from backend.app.db.models import DownloadFile, DownloadTask, MangaInfo, MangaPicPage
+from backend.app.db.models import (
+    DownloadFile,
+    DownloadTask,
+    LibraryReceipt,
+    MangaInfo,
+    MangaPicPage,
+)
 from backend.app.db.repository import FileRepository, MangaRepository, TaskRepository, task_to_dict
 from backend.app.services.archive_service import create_zip, is_complete_zip
 from backend.app.services.task_runner import task_runner
@@ -30,6 +36,23 @@ DownloadFingerprint = tuple[tuple[Path, int, int], ...]
 class LibraryService:
     def __init__(self) -> None:
         self._prepared_downloads: dict[str, DownloadFingerprint] = {}
+
+    async def set_taken(self, manga_ids: list[str], taken: bool) -> dict:
+        selected = list(dict.fromkeys(manga_ids))
+        async with SessionLocal() as session:
+            updated = await MangaRepository(session).set_taken(selected, taken)
+        if updated:
+            from backend.app.api.notification import manager
+
+            await manager.broadcast({"type": "library_updated", "manga_ids": updated})
+        return {
+            "updated": updated,
+            "failed": [
+                {"manga_id": manga_id, "error": "资料库项目不存在"}
+                for manga_id in selected if manga_id not in updated
+            ],
+            "taken": taken,
+        }
 
     async def delete(self, manga_id: str, delete_files: bool = False) -> None:
         _check_manga_id(manga_id)
@@ -66,6 +89,38 @@ class LibraryService:
             except (ValueError, OSError) as exc:
                 failed.append({"manga_id": manga_id, "error": str(exc)})
         return {"deleted": deleted, "failed": failed, "delete_files": delete_files}
+
+    async def cleanup_files(self, manga_ids: list[str]) -> dict:
+        cleaned: list[str] = []
+        failed: list[dict] = []
+        for manga_id in dict.fromkeys(manga_ids):
+            try:
+                await self._cleanup_files(manga_id)
+                cleaned.append(manga_id)
+            except KeyError:
+                failed.append({"manga_id": manga_id, "error": "资料库项目不存在"})
+            except (ValueError, OSError) as exc:
+                failed.append({"manga_id": manga_id, "error": str(exc)})
+        return {"cleaned": cleaned, "failed": failed}
+
+    async def _cleanup_files(self, manga_id: str) -> None:
+        async with SessionLocal() as session:
+            repo = MangaRepository(session)
+            await repo.lock_for_removal()
+            if await repo.get_info(manga_id) is None:
+                raise KeyError(manga_id)
+            related = await TaskRepository(session).list_for_manga(manga_id)
+            if any(
+                task.status in ACTIVE_TASK_STATUSES or task_runner.is_running(task.id)
+                for task in related
+            ):
+                raise ValueError("仍有待处理、运行或暂停的任务，请先完成或取消任务")
+            await asyncio.to_thread(
+                _delete_owned_files, Path(get_settings().download_path), manga_id,
+            )
+            await repo.mark_files_removed(manga_id)
+            await session.commit()
+        self._prepared_downloads.pop(manga_id, None)
 
     async def prepare_download(self, manga_id: str) -> Path:
         _check_manga_id(manga_id)
@@ -148,13 +203,14 @@ class LibraryService:
             pic_pages_map = await manga_repo.list_pic_pages_for_manga_ids(manga_ids)
             files_map = await file_repo.list_for_manga_ids(manga_ids)
             tasks_map = await task_repo.latest_for_manga_ids(manga_ids)
+            receipts = await manga_repo.list_receipts(manga_ids)
 
             items = []
             for info in infos:
                 pic_pages = pic_pages_map.get(info.id, [])
                 files = files_map.get(info.id, [])
                 task = tasks_map.get(info.id)
-                item = self._summary(info, pic_pages, files, task)
+                item = self._summary(info, pic_pages, files, task, receipt=receipts.get(info.id))
                 if status and item["status"] != status:
                     continue
                 if zip_status == "zipped" and not item["zip_exists"]:
@@ -187,7 +243,10 @@ class LibraryService:
             pic_pages = await manga_repo.list_pic_pages(manga_id)
             files = await FileRepository(session).list_for_manga(manga_id)
             task = await TaskRepository(session).latest_for_manga(manga_id)
-            return self._summary(info, pic_pages, files, task, include_files=True)
+            receipts = await manga_repo.list_receipts({manga_id})
+            return self._summary(
+                info, pic_pages, files, task, include_files=True, receipt=receipts.get(manga_id),
+            )
 
     async def verify(self, manga_id: str) -> dict | None:
         async with SessionLocal() as session:
@@ -303,6 +362,7 @@ class LibraryService:
         files: DownloadFiles,
         task: DownloadTask | None = None,
         include_files: bool = False,
+        receipt: LibraryReceipt | None = None,
     ) -> dict:
         rows = self._file_rows_sync(info, pic_pages, files)
         total_files = max(info.pic_count, len(pic_pages), len(rows))
@@ -318,6 +378,12 @@ class LibraryService:
         status = self._computed_status(
             info.status, task_status, total_files, valid_files, zip_ready,
         )
+        files_removed_at = receipt.files_removed_at if receipt else None
+        if (
+            files_removed_at and task_status not in ACTIVE_TASK_STATUSES
+            and not any(row["exists"] for row in rows) and not archive_exists
+        ):
+            status = "archived"
         payload: dict[str, Any] = {
             "manga_id": info.id,
             "title": info.title,
@@ -326,6 +392,9 @@ class LibraryService:
             "manga_status": info.status,
             "task_id": task.id if task else None,
             "task_status": task_status,
+            "taken_at": local_isoformat(receipt.taken_at if receipt else None),
+            "files_removed_at": local_isoformat(files_removed_at),
+            "has_local_files": any(row["exists"] for row in rows) or archive_exists,
             "page_count": info.page_count,
             "pic_count": info.pic_count,
             "total_files": total_files,

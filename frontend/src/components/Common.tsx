@@ -71,6 +71,7 @@ export function StatusBadge({ status }: { status: string }) {
     queued: "排队中",
     paused: "暂停",
     completed: "已完成",
+    archived: "已清理",
     cancelled: "已取消",
   };
   const className =

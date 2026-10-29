@@ -9,6 +9,8 @@ import type {
   LibrarySortKey,
   LibraryDownloadResult,
   LibraryDeleteResult,
+  LibraryReceiptResult,
+  LibraryCleanupResult,
   LogList,
   AppConfig,
 } from "./types";
@@ -51,6 +53,20 @@ export async function deleteLibraryApi(mangaIds: string[], deleteFiles: boolean)
 
 export async function prepareLibraryDownloadsApi(mangaIds: string[]): Promise<LibraryDownloadResult> {
   return api("/api/library/downloads", {
+    method: "POST",
+    body: JSON.stringify({ manga_ids: mangaIds }),
+  });
+}
+
+export async function setLibraryTakenApi(mangaIds: string[], taken: boolean): Promise<LibraryReceiptResult> {
+  return api("/api/library/receipts", {
+    method: "PATCH",
+    body: JSON.stringify({ manga_ids: mangaIds, taken }),
+  });
+}
+
+export async function cleanupLibraryFilesApi(mangaIds: string[]): Promise<LibraryCleanupResult> {
+  return api("/api/library/cleanup", {
     method: "POST",
     body: JSON.stringify({ manga_ids: mangaIds }),
   });

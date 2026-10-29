@@ -24,6 +24,14 @@ class MangaInfo(Base):
     )
 
 
+class LibraryReceipt(Base):
+    __tablename__ = "library_receipt"
+
+    manga_id: Mapped[str] = mapped_column(String, primary_key=True)
+    taken_at: Mapped[datetime | None] = mapped_column(DateTime)
+    files_removed_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
 class MangaPage(Base):
     __tablename__ = "manga_page"
     __table_args__ = (UniqueConstraint("manga_id", "page_index"),)
