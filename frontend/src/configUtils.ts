@@ -7,6 +7,7 @@ export const configFields = [
   { key: "request_delay_ms", label: "请求间隔", section: "download" },
   { key: "timeout_seconds", label: "请求超时", section: "download" },
   { key: "is_zip", label: "自动打包 ZIP", section: "download" },
+  { key: "split_large_zip", label: "大文件拆分", section: "download" },
   { key: "enable_image_compression", label: "图片压缩", section: "compression" },
   { key: "image_max_size_kb", label: "图片大小上限", section: "compression" },
   { key: "keep_original_images", label: "保留原图", section: "compression" },
@@ -46,6 +47,7 @@ export function mergeConfigDraft(server: AppConfig, draft: AppConfig | null, bas
 export function editableConfig(config: AppConfig) {
   return {
     theme: config.theme, download_path: config.download_path, is_zip: config.is_zip,
+    split_large_zip: config.split_large_zip,
     enable_image_compression: config.enable_image_compression, image_max_size_kb: config.image_max_size_kb,
     keep_original_images: config.keep_original_images, allow_image_resize: config.allow_image_resize,
     max_thread: config.max_thread, request_delay_ms: config.request_delay_ms,

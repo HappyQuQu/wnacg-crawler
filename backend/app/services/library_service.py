@@ -21,7 +21,12 @@ from backend.app.db.models import (
     MangaPicPage,
 )
 from backend.app.db.repository import FileRepository, MangaRepository, TaskRepository, task_to_dict
-from backend.app.services.archive_service import create_zip, is_complete_zip
+from backend.app.services.archive_service import (
+    create_zip,
+    existing_zip_paths,
+    is_complete_zip,
+    plan_zip,
+)
 from backend.app.services.task_runner import task_runner
 
 ACTIVE_TASK_STATUSES = {"pending", "queued", "running", "paused"}
@@ -35,10 +40,13 @@ DownloadFingerprint = tuple[tuple[Path, int, int], ...]
 
 class LibraryService:
     def __init__(self) -> None:
-        self._prepared_downloads: dict[str, DownloadFingerprint] = {}
+        self._prepared_downloads: dict[str, tuple[bool, DownloadFingerprint]] = {}
+        self._downloaded_parts: dict[str, set[tuple[Path, int, int]]] = {}
 
     async def set_taken(self, manga_ids: list[str], taken: bool) -> dict:
         selected = list(dict.fromkeys(manga_ids))
+        for manga_id in selected:
+            self._downloaded_parts.pop(manga_id, None)
         async with SessionLocal() as session:
             updated = await MangaRepository(session).set_taken(selected, taken)
         if updated:
@@ -76,6 +84,7 @@ class LibraryService:
             await repo.delete(manga_id)
             await session.commit()
         self._prepared_downloads.pop(manga_id, None)
+        self._downloaded_parts.pop(manga_id, None)
 
     async def delete_many(self, manga_ids: list[str], delete_files: bool = False) -> dict:
         deleted: list[str] = []
@@ -121,8 +130,19 @@ class LibraryService:
             await repo.mark_files_removed(manga_id)
             await session.commit()
         self._prepared_downloads.pop(manga_id, None)
+        self._downloaded_parts.pop(manga_id, None)
 
-    async def prepare_download(self, manga_id: str) -> Path:
+    async def prepare_download(self, manga_id: str, part: int | None = None) -> Path:
+        archives = await self.prepare_download_archives(manga_id)
+        if part is None:
+            if len(archives) > 1:
+                raise ValueError("作品已拆成多个独立 ZIP，请通过下载清单下载全部文件")
+            return archives[0]
+        if part < 1 or part > len(archives):
+            raise ValueError("ZIP 序号不存在，请刷新下载清单")
+        return archives[part - 1]
+
+    async def prepare_download_archives(self, manga_id: str) -> list[Path]:
         _check_manga_id(manga_id)
         base = Path(get_settings().download_path)
         async with SessionLocal() as session:
@@ -144,13 +164,17 @@ class LibraryService:
             target = zip_path(base, manga_id, info.title or manga_id)
             _check_owned_path(base, target, manga_id, "Zip")
             paths = [Path(row["file_path"]) for row in rows]
-            fingerprint = await asyncio.to_thread(_download_fingerprint, [target, *paths])
+            archives = await asyncio.to_thread(existing_zip_paths, target)
+            for archive in archives:
+                _check_owned_path(base, archive, manga_id, "Zip")
+            split = get_settings().split_large_zip
+            fingerprint = await asyncio.to_thread(_download_fingerprint, [*archives, *paths])
             if (
-                rows and all(row["status"] == "valid" for row in rows)
+                archives and rows and all(row["status"] == "valid" for row in rows)
                 and fingerprint is not None
-                and self._prepared_downloads.get(manga_id) == fingerprint
+                and self._prepared_downloads.get(manga_id) == (split, fingerprint)
             ):
-                return target
+                return archives
             rows = await self._file_rows(info, pages, files, validate=True)
             if not rows or any(row["status"] != "valid" for row in rows):
                 raise ValueError("图片缺失或校验失败，请先在后台补全后再下载")
@@ -162,22 +186,40 @@ class LibraryService:
         if not await asyncio.to_thread(is_complete_zip, target, paths):
             target.parent.mkdir(parents=True, exist_ok=True)
             await asyncio.to_thread(create_zip, source, target, paths)
-        fingerprint = await asyncio.to_thread(_download_fingerprint, [target, *paths])
+        archives = await asyncio.to_thread(existing_zip_paths, target)
+        fingerprint = await asyncio.to_thread(_download_fingerprint, [*archives, *paths])
         if fingerprint is not None:
-            self._prepared_downloads[manga_id] = fingerprint
-        return target
+            self._prepared_downloads[manga_id] = (split, fingerprint)
+        return archives
+
+    async def record_download_part(self, manga_id: str, path: Path) -> None:
+        summary = await self.get(manga_id)
+        if summary is None or not summary["zip_exists"]:
+            return
+        archives = [Path(value) for value in summary["zip_paths"]]
+        fingerprint = await asyncio.to_thread(_download_fingerprint, archives)
+        if not fingerprint:
+            return
+        sent = self._downloaded_parts.setdefault(manga_id, set())
+        sent.update(stamp for stamp in fingerprint if stamp[0] == path)
+        if all(stamp in sent for stamp in fingerprint):
+            await self.set_taken([manga_id], True)
 
     async def prepare_downloads(self, manga_ids: list[str]) -> dict:
         ready: list[dict] = []
         failed: list[dict] = []
         for manga_id in dict.fromkeys(manga_ids):
             try:
-                target = await self.prepare_download(manga_id)
-                ready.append({
-                    "manga_id": manga_id,
-                    "filename": download_filename(target, manga_id),
-                    "url": f"/api/library/{manga_id}/download",
-                })
+                archives = await self.prepare_download_archives(manga_id)
+                for index, target in enumerate(archives, 1):
+                    url = f"/api/library/{manga_id}/download"
+                    if len(archives) > 1:
+                        url += f"?part={index}"
+                    ready.append({
+                        "manga_id": manga_id,
+                        "filename": download_filename(target, manga_id),
+                        "url": url,
+                    })
             except KeyError:
                 failed.append({"manga_id": manga_id, "error": "资料库项目不存在"})
             except (ValueError, OSError) as exc:
@@ -302,7 +344,7 @@ class LibraryService:
         if not source.exists():
             summary["zip_status"] = "blocked_missing_dir"
             return summary
-        if target.exists() and not overwrite:
+        if summary["zip_exists"] and not overwrite:
             summary["zip_status"] = "exists"
             return summary
 
@@ -373,7 +415,17 @@ class LibraryService:
         task_status = task.status if task else None
         download_dir = manga_dir(Path(get_settings().download_path), info.id, info.title or info.id)
         archive_path = zip_path(Path(get_settings().download_path), info.id, info.title or info.id)
-        archive_exists = archive_path.is_file() and archive_path.stat().st_size > 0
+        archives = existing_zip_paths(archive_path)
+        expected: list[Path] = []
+        try:
+            expected = [path for path, _ in plan_zip(
+                archive_path, [Path(row["file_path"]) for row in rows],
+            )]
+        except (OSError, ValueError):
+            pass
+        archive_exists = bool(expected) and set(archives) == set(expected) and all(
+            path.stat().st_size > 0 for path in archives
+        )
         zip_ready = not get_settings().is_zip or archive_exists
         status = self._computed_status(
             info.status, task_status, total_files, valid_files, zip_ready,
@@ -381,7 +433,7 @@ class LibraryService:
         files_removed_at = receipt.files_removed_at if receipt else None
         if (
             files_removed_at and task_status not in ACTIVE_TASK_STATUSES
-            and not any(row["exists"] for row in rows) and not archive_exists
+            and not any(row["exists"] for row in rows) and not archives
         ):
             status = "archived"
         payload: dict[str, Any] = {
@@ -394,7 +446,7 @@ class LibraryService:
             "task_status": task_status,
             "taken_at": local_isoformat(receipt.taken_at if receipt else None),
             "files_removed_at": local_isoformat(files_removed_at),
-            "has_local_files": any(row["exists"] for row in rows) or archive_exists,
+            "has_local_files": any(row["exists"] for row in rows) or bool(archives),
             "page_count": info.page_count,
             "pic_count": info.pic_count,
             "total_files": total_files,
@@ -406,7 +458,9 @@ class LibraryService:
             "download_dir_exists": download_dir.exists(),
             "zip_path": str(archive_path),
             "zip_exists": archive_exists,
-            "zip_size": archive_path.stat().st_size if archive_exists else 0,
+            "zip_paths": [str(path) for path in archives],
+            "zip_count": len(archives),
+            "zip_size": sum(path.stat().st_size for path in archives),
             "last_error": info.last_error or None,
             "created_at": local_isoformat(info.created_at),
             "updated_at": local_isoformat(info.updated_at),

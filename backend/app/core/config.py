@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     download_path: Path = Path("./data")
     db_path: Path = Path("./config/data.sqlite")
     is_zip: bool = True
+    split_large_zip: bool = True
     enable_image_compression: bool = False
     image_max_size_kb: int = Field(default=1024, ge=1, le=102400)
     keep_original_images: bool = True

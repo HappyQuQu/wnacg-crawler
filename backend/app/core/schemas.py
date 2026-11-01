@@ -78,6 +78,7 @@ class ConfigUpdateRequest(BaseModel):
     theme: Literal["light", "dark", "system"] | None = None
     download_path: str | None = None
     is_zip: bool | None = None
+    split_large_zip: bool | None = None
     enable_image_compression: bool | None = None
     image_max_size_kb: int | None = Field(default=None, ge=1, le=102400)
     keep_original_images: bool | None = None
