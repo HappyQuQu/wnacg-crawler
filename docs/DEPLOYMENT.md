@@ -29,7 +29,9 @@ docker run -d --name wnacg --restart unless-stopped \
   evanqu/wnacg-crawler:latest
 ```
 
-扩展 ZIP 可在每次成功运行的 `CI` 或发布流程的 Artifacts 中下载。
+浏览器扩展推荐[从 Chrome 网上应用店安装](https://chromewebstore.google.com/detail/ipnoamlkghnlmmbcpombpfbjihiafdbp)，部署后台后按[连接说明](../README.md#连接后台)填写地址与 Token。需要手动安装开发版本时，扩展 ZIP 仍可在成功运行的 `CI` 或发布流程的 Artifacts 中下载。
+
+Docker Hub Overview 的文案源文件为 [`docs/DOCKERHUB.md`](DOCKERHUB.md)，Chrome 商店资料见 [`docs/CHROME_WEB_STORE.md`](CHROME_WEB_STORE.md)。修改文案后需同步到对应平台；镜像发布流程不会自动更新这两处介绍。
 
 ## Docker Compose
 

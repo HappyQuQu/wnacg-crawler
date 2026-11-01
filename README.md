@@ -2,13 +2,21 @@
 
 <img src="extension/icons/icon.svg" alt="WNACG" width="64" height="64">
 
-通过 Web 后台批量下载 WNACG 作品，查看任务进度、管理本地资料库，并校验图片与 ZIP 的完整性。搭配 Chrome 扩展，可从站点页面直接添加任务。
+在电脑或 NAS 上部署一个下载后台，批量添加 WNACG 作品、查看任务进度、管理本地资料库，并校验图片与 ZIP 的完整性。安装配套 Chrome 扩展后，可从站点页面直接加入队列、查看已下载状态。
 
 **Docker 一键部署 · amd64 / arm64 · 可恢复下载 · 可选浏览器扩展**
 
+[安装 Chrome 扩展](https://chromewebstore.google.com/detail/ipnoamlkghnlmmbcpombpfbjihiafdbp) · [Docker Hub 镜像](https://hub.docker.com/r/evanqu/wnacg-crawler) · [问题反馈](https://github.com/HappyQuQu/wnacg-crawler/issues)
+
 [快速部署](#快速部署) · [使用方法](#使用方法) · [界面预览](#界面预览) · [浏览器扩展](#浏览器扩展) · [配置与数据](#配置与数据) · [本地开发](#本地开发) · [文档](#文档)
 
-当前为 **2.0 开发版本**，后台可独立使用。
+当前为 **2.0 开发版本**。后台可独立使用，Chrome 扩展已上架。
+
+| 你从哪里开始 | 下一步 |
+| --- | --- |
+| 第一次使用本项目 | 先按下方步骤部署后台，再[从 Chrome 商店安装扩展](https://chromewebstore.google.com/detail/ipnoamlkghnlmmbcpombpfbjihiafdbp) |
+| 已从 Chrome 商店安装扩展 | 这里就是配套后台项目；先[部署后台](#快速部署)，再[填写地址和 Token](#连接后台) |
+| 已运行 Docker 后台 | 直接[安装 Chrome 扩展](https://chromewebstore.google.com/detail/ipnoamlkghnlmmbcpombpfbjihiafdbp)，在扩展中连接现有后台 |
 
 ## 快速部署
 
@@ -35,6 +43,8 @@ docker compose up -d
 打开 **[http://localhost:8080](http://localhost:8080)** 即可使用。部署在服务器上时，将 `localhost` 换成服务器 IP。
 
 镜像已包含前端、后端和 Chromium，支持 amd64 / arm64，无需安装 Python、Node.js 或克隆源码。下载参数在后台「设置」中调整。
+
+接下来可[安装 Chrome 扩展](https://chromewebstore.google.com/detail/ipnoamlkghnlmmbcpombpfbjihiafdbp)，按[连接后台](#连接后台)填写地址和 Token，即可从原站页面添加任务。
 
 ### 更新与管理
 
@@ -131,15 +141,21 @@ docker compose down
 
 ## 浏览器扩展
 
-扩展是可选入口，需要先启动后台。
+**[在 Chrome 网上应用店安装 WNACG 下载器](https://chromewebstore.google.com/detail/ipnoamlkghnlmmbcpombpfbjihiafdbp)**
 
-### 下载与安装
+扩展是本项目的可选入口。后台负责下载和保存文件，扩展负责在原站识别作品、加入队列和展示本地状态。需要先[启动后台](#快速部署)；只安装扩展还不能下载。
 
-1. 打开 [GitHub Actions](https://github.com/HappyQuQu/wnacg-crawler/actions/workflows/dockerhub.yml)，选择一次成功的发布运行。
-2. 在 **Artifacts** 中下载 `wnacg-downloader-extension`，解压得到 `wnacg-downloader-extension.zip`，再将该 ZIP 解压到一个固定目录。
-3. 打开 `chrome://extensions/`，启用「开发者模式」。
-4. 点击「加载已解压的扩展程序」，选择包含 `manifest.json` 的目录。
-5. 在后台「设置」中生成扩展 Token，填写到扩展设置页，测试连接并保存。浏览器请求访问后台地址时，点击「允许」。
+### 商店安装（推荐）
+
+1. 打开上方 Chrome 商店链接，点击「添加至 Chrome」。无需启用开发者模式。
+2. 打开扩展的「连接设置」，按下方说明连接自己的后台。
+
+### 连接后台
+
+1. 打开后台管理页面，在「设置」中生成扩展 Token。
+2. 在扩展「连接设置」中填写后台服务地址、后台管理页面地址和 Token。
+3. 点击「测试连接」，浏览器请求访问后台地址时点击「允许」，连接成功后保存。
+4. 打开支持的 WNACG 详情页或列表页，使用「加入队列」入口；也可以从扩展弹窗查看任务和打开后台。
 
 默认连接配置：
 
@@ -149,13 +165,19 @@ docker compose down
 | 后台管理页面地址 | `http://127.0.0.1:8080` |
 | Extension Token | 后台生成的 Token |
 
-扩展默认支持 `wnacg.com`、`wnacg.org` 和本机后台。连接内网后台时，填写服务器地址，在「保存」或「测试连接」时授予该地址的访问权限即可，无需修改扩展文件。使用其他原站域名时，仍需调整 `manifest.json` 的站点匹配规则并重新加载。详细步骤见[扩展验收指南](docs/EXTENSION_MANUAL_TEST.md)。
+后台部署在 NAS 或服务器上时，两个地址填写电脑浏览器能访问的服务器地址，例如 `http://192.168.2.222:8080`，端口以实际部署为准。不要把服务器的 `127.0.0.1` 填入另一台电脑的扩展。
 
-### 扩展界面
+扩展默认支持 `wnacg.com`、`wnacg.org` 和本机后台。连接内网后台时，在「保存」或「测试连接」时授予该地址的访问权限即可，无需修改扩展文件。详细步骤见[扩展验收指南](docs/EXTENSION_MANUAL_TEST.md)。
 
-![扩展弹窗：连接状态、当前作品和任务进度](docs/screenshots/extension-popup-dark.png)
+### 手动安装与源码构建
 
-![扩展设置：后台地址、Token 和连接测试](docs/screenshots/extension-settings-dark.png)
+需要手动加载或测试开发版本时：
+
+1. 打开 [GitHub Actions](https://github.com/HappyQuQu/wnacg-crawler/actions/workflows/dockerhub.yml)，选择一次成功的发布运行。
+2. 在 **Artifacts** 中下载 `wnacg-downloader-extension`，解压得到 `wnacg-downloader-extension.zip`，再将该 ZIP 解压到一个固定目录。
+3. 打开 `chrome://extensions/`，启用「开发者模式」。
+4. 点击「加载已解压的扩展程序」，选择包含 `manifest.json` 的目录。
+5. 按上方[连接后台](#连接后台)完成设置。
 
 也可以从源码构建，需 Node.js 24 LTS 和 npm：
 
@@ -165,6 +187,14 @@ npm run package:extension
 ```
 
 产物为 `dist/wnacg-downloader-extension.zip`，解压后按上述步骤加载。
+
+使用其他原站域名时，需在源码的 `manifest.json` 中调整站点匹配规则、重新构建并加载。
+
+### 扩展界面
+
+![扩展弹窗：连接状态、当前作品和任务进度](docs/screenshots/extension-popup-dark.png)
+
+![扩展设置：后台地址、Token 和连接测试](docs/screenshots/extension-settings-dark.png)
 
 ## 配置与数据
 
@@ -243,6 +273,8 @@ GitHub Actions 会在推送 `main` 后执行检查并发布多架构镜像，也
 
 | 问题 | 处理方式 |
 | --- | --- |
+| 扩展在哪里安装 | 前往 [Chrome 网上应用店](https://chromewebstore.google.com/detail/ipnoamlkghnlmmbcpombpfbjihiafdbp)，安装后连接本项目后台 |
+| 装了扩展，还需要下载什么 | 需要先[部署后台](#快速部署)；Docker 镜像已包含完整后台，无需另外安装源码和依赖 |
 | 8080 端口被占用 | 修改 Compose 左侧的宿主机端口，并同步调整扩展地址及权限 |
 | 后台保存设置后没有生效 | 检查系统环境变量或 `.env` 覆盖，取消覆盖后重启服务 |
 | 容器无法连接宿主机代理 | 容器内 `127.0.0.1` 指向自身；Docker Desktop 可用 `host.docker.internal`，其他环境使用容器可访问的宿主机地址 |
