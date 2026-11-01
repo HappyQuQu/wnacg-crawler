@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from fastapi.responses import FileResponse
 from starlette.types import Message, Receive, Scope, Send
 
@@ -73,9 +73,9 @@ async def prepare_library_downloads(payload: LibrarySelectionRequest):
 
 
 @router.get("/{manga_id}/download")
-async def download_library_item(manga_id: str):
+async def download_library_item(manga_id: str, part: int | None = Query(default=None, ge=1)):
     try:
-        path = await library_service.prepare_download(manga_id)
+        path = await library_service.prepare_download(manga_id, part)
         return _LibraryDownloadResponse(path, manga_id)
     except KeyError:
         raise HTTPException(status_code=404, detail="资料库项目不存在") from None
@@ -133,5 +133,5 @@ class _LibraryDownloadResponse(FileResponse):
                 finished = True
 
         await super().__call__(scope, receive, track_send)
-        if scope["method"] == "GET" and status in {200, 206} and finished:
-            await library_service.set_taken([self.manga_id], True)
+        if scope["method"] == "GET" and status == 200 and finished:
+            await library_service.record_download_part(self.manga_id, Path(self.path))

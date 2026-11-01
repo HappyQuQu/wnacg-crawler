@@ -86,6 +86,8 @@ export type LibraryItem = {
   zip_path: string;
   zip_exists: boolean;
   zip_size: number;
+  zip_count: number;
+  zip_paths: string[];
   last_error: string | null;
   updated_at: string | null;
   files?: LibraryFile[];
@@ -188,6 +190,7 @@ export type AppConfig = {
   theme: ThemePreference;
   download_path: string;
   is_zip: boolean;
+  split_large_zip: boolean;
   enable_image_compression: boolean;
   image_max_size_kb: number;
   keep_original_images: boolean;

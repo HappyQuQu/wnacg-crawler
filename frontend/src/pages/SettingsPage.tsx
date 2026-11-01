@@ -11,7 +11,7 @@ import { useToast } from "../components/Toast";
 
 const sections = [
   { id: "appearance", label: "外观与显示", description: "主题与本机封面显示偏好", keywords: "theme appearance 隐私 无图 模糊 封面", Icon: Monitor },
-  { id: "download", label: "下载与存储", description: "文件位置、下载节奏与自动归档", keywords: "download zip 并发 请求 间隔 超时 目录 打包", Icon: HardDrive },
+  { id: "download", label: "下载与存储", description: "文件位置、下载节奏与自动归档", keywords: "download zip 并发 请求 间隔 超时 目录 打包 拆分 2gb comicshare", Icon: HardDrive },
   { id: "compression", label: "图片压缩", description: "新下载图片的大小与原图保留", keywords: "image compression kb 分辨率 质量 原图", Icon: Image },
   { id: "network", label: "网络代理", description: "源站访问方式与代理认证", keywords: "proxy 端口 地址 账号 密码", Icon: Network },
   { id: "extension", label: "浏览器扩展", description: "后台地址与扩展访问 Token", keywords: "token extension 配对 令牌 生成 复制", Icon: KeyRound },
@@ -103,6 +103,7 @@ export function SettingsPage({
             <ConfigInput label="下载目录" id="download_path" value={config.download_path} error={errors.download_path} onChange={(value) => updateConfig({ download_path: value })} hint="这是后台使用的路径。Docker 部署请填写容器内目录。" />
             <div className="preferences-number-grid"><ConfigInput label="图片并发" id="max_thread" value={config.max_thread} type="number" min={1} max={20} unit="线程" error={errors.max_thread} onChange={(value) => updateConfig({ max_thread: Number(value) })} hint="1–20 个图片请求" /><ConfigInput label="请求间隔" id="request_delay_ms" value={config.request_delay_ms} type="number" min={0} max={10000} unit="ms" error={errors.request_delay_ms} onChange={(value) => updateConfig({ request_delay_ms: Number(value) })} hint="0–10000 毫秒" /><ConfigInput label="请求超时" id="timeout_seconds" value={config.timeout_seconds} type="number" min={5} max={120} unit="秒" error={errors.timeout_seconds} onChange={(value) => updateConfig({ timeout_seconds: Number(value) })} hint="5–120 秒" /></div>
             <Toggle label="自动打包 ZIP" description="完成下载与完整性检查后，生成此作品的独立归档。" checked={config.is_zip} onChange={(value) => updateConfig({ is_zip: value })} />
+            <Toggle label="大文件拆分" description="默认开启，每个 ZIP 小于 2 GB，可独立打开，兼容 ComicShare。关闭后生成单个 ZIP，大文件需要阅读软件支持 ZIP64。也适用于手动打包和下载到电脑。" checked={config.split_large_zip} onChange={(value) => updateConfig({ split_large_zip: value })} />
           </PreferenceSection>}
           {visible.has("compression") && <PreferenceSection section="compression" title="图片压缩" description="仅处理新下载图片，按需控制单张文件大小。" Icon={Image}>
             <Toggle label="启用图片压缩" description="优先调整编码质量；处理失败时保存原图。" checked={config.enable_image_compression} onChange={(value) => updateConfig({ enable_image_compression: value })} />
