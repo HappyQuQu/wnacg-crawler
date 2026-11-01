@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "WNACG 下载器",
   "short_name": "WNACG",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "连接 WNACG 下载后台，添加漫画并查看服务器文件与下载记录。",
   "permissions": [
     "storage",

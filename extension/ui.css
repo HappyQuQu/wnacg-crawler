@@ -8,7 +8,7 @@ button,input { font:inherit; }
 svg { width:16px; height:16px; flex-shrink:0; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
 button { display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:34px; flex-shrink:0; padding:0 12px; border:1px solid transparent; border-radius:7px; background:transparent; color:var(--secondary); font-size:12px; font-weight:550; cursor:pointer; transition:background 150ms,border-color 150ms; }
 button:disabled { opacity:.45; cursor:default; }
-button:focus-visible,input:focus-visible,.task-list:focus-visible { outline:2px solid var(--primary); outline-offset:3px; }
+button:focus-visible,input:focus-visible,.task-list:focus-visible,.project-links a:focus-visible { outline:2px solid var(--primary); outline-offset:3px; }
 .btn-primary { background:var(--primary); color:#fff; }
 .btn-primary:hover:not(:disabled) { filter:brightness(.95); }
 .btn-secondary { background:var(--surface); border-color:var(--line); }
@@ -101,6 +101,10 @@ html.popup-document { width:380px; min-width:380px; }
 .connection-editor { display:flex; flex-direction:column; min-height:0; }
 .editor-header { padding:14px; border-bottom:1px solid var(--line); }
 .editor-header .card-sub { margin-top:4px; }
+.project-links { display:flex; flex-wrap:wrap; align-items:center; gap:4px 16px; margin-top:8px; }
+.project-links a { display:inline-flex; align-items:center; gap:4px; min-height:24px; color:var(--primary-text); font-size:11px; line-height:1.6; text-decoration:none; }
+.project-links a:hover { text-decoration:underline; }
+.project-links svg { width:12px; height:12px; }
 .editor-fields { display:grid; gap:15px; min-width:0; padding:14px; margin:0; border:0; }
 .field { display:grid; gap:6px; min-width:0; }
 .field-label,.field-heading > label { color:var(--secondary); font-size:11px; font-weight:500; }
